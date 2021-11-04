@@ -1,4 +1,2 @@
-/FieldImageCache.pickle
-/FieldImageCache_1000_4000_100_0.pickle
-/FieldImageCache_1000_4000_10_-10.pickle
-/FieldImageCache_500_4000_100_0.pickle
+*.pickle
+__pycache__/

@@ -1,10 +1,13 @@
+from math import pi
 import re
+from typing import Tuple
 import numpy as np
 from scipy.optimize.minpack import curve_fit
 import scipy.stats
 from scipy import ndimage
 import matplotlib.pyplot as plt
 from astropy.io import fits
+import functools
 
 from .colouredPrint import printC, bcolors
 
@@ -17,14 +20,36 @@ def bbox(img):
     rmin, rmax = np.where(rows)[0][[0, -1]]
     cmin, cmax = np.where(cols)[0][[0, -1]]
 
-    return rmin, rmax, cmin, cmax
+    return cmin, cmax, rmin, rmax
 
 def indexFromBbox(bbox):
-    rmin, rmax, cmin, cmax = bbox
+    cmin, cmax, rmin, rmax = bbox
     return (
         slice(rmin,rmax+1),
         slice(cmin,cmax+1)
     )
+
+@functools.cache
+def circularMask(radius):
+    y,x = np.ogrid[-radius: radius+1, -radius: radius+1]
+    mask = x**2+y**2 <= radius**2
+    mask = mask.astype(int)
+    return mask
+
+def squareMaskAroundPoint(point,r,layerShape):
+        rmin = np.max([point[1] - r,0])
+        rmax = np.min([point[1] + r,layerShape[0]-1])
+        cmin = np.max([point[0] - r,0])
+        cmax = np.min([point[0] + r,layerShape[1]-1])
+
+        localY = point[1] - rmin
+        localX = point[0] - cmin
+
+        maskShape = (rmax-rmin+1, cmax-cmin+1)
+        localPoint = (localX,localY)
+        sliceIndex = indexFromBbox((cmin,cmax,rmin,rmax))
+
+        return maskShape, localPoint, sliceIndex
 
 class FieldImage():
     def __init__(self,filePath = None):
@@ -78,16 +103,17 @@ class FieldImage():
         self.backgroundFitCoeffs = coeffs
         self.backgroundMean = coeffs[0]
         self.backgroundStd = coeffs[1]
+        self.backgroundStd2 = np.std(pixels[(pixels < maxFit) & (pixels > minFit)])
         self.galaxy_significance_threshold = self.backgroundStd*self.getSignificanceThresholdInStd() + self.backgroundMean
 
     def printBackgroundInfo(self):
         self._ensureBackground()
         
-        printC(bcolors.OKBLUE, f'Background is {self.backgroundMean:.5g} +/- {self.backgroundStd:.3g}')
-        printC(bcolors.OKCYAN, f'Threshold for galaxies is then {self.galaxy_significance_threshold:.4g}')
-        printC(bcolors.OKCYAN,
-            f'This gives a ~{self.pvalueForThreshold*100:.1g}% chance that one point of noise will be mislabled as a galaxy'
-        )
+        printC(bcolors.OKBLUE, f'Background is {self.backgroundMean:.5g} +/- {self.backgroundStd:.3g} ({self.backgroundStd2:.3g})')
+        printC(bcolors.OKCYAN, f'Threshold for galaxies is {self.galaxy_significance_threshold:.4g}')
+        # printC(bcolors.OKCYAN,
+        #     f'This gives a <{self.pvalueForThreshold*100:.1g}% chance that one point of noise will be mislabled as a galaxy'
+        # )
 
     def plotBackground(self,xlim=[3200,3600]):
         self._ensureBackground()
@@ -118,7 +144,7 @@ class FieldImage():
         
         self.blackoutRegion[indicies_or_mask] = True
 
-    def filterBright(self,threshold=None,expandThreshold=None):
+    def identifyObjects(self,threshold=None,expandThreshold=None):
 
         if threshold is None:
             self._ensureBackground()
@@ -127,11 +153,11 @@ class FieldImage():
         if expandThreshold is None:
             self._ensureBackground()
             expandThreshold = self.galaxy_significance_threshold
-            # galaxy_significance_threshold might be too high ?
 
         remainingCorePixels = self.image.copy()
         remainingCoreMask = self.image > threshold
         expandMask = self.image > expandThreshold
+        self.globalObjectMask = self.getEmptyMask()
 
         totalPixelsRemaining = np.sum(remainingCoreMask)
         print('Total core pixels:',totalPixelsRemaining)
@@ -145,8 +171,9 @@ class FieldImage():
             objectMask = self._dilateObjectMask(expandMask, firstPixel,totalPixelsRemaining)
             remainingCoreMask = remainingCoreMask & np.bitwise_not(objectMask)
             totalPixelsRemaining = np.sum(remainingCoreMask)
+            self.globalObjectMask = self.globalObjectMask | objectMask
 
-            self.objects.append(AstronomicalObject(objectMask,self.image))
+            self.objects.append(AstronomicalObject(objectMask,self))
             
 
     def _dilateObjectMask(self, includeMask, firstPixel, coreRemaining=None):
@@ -166,17 +193,6 @@ class FieldImage():
             changeNumberPixels = newObjectNumberPixels - objectNumberPixels
             objectNumberPixels = newObjectNumberPixels
         return objectMask
-
-    def _maskAroundPoint(self,point,r,layerShape):
-        rmin = np.max(point[0] - r,0)
-        rmax = np.min(point[0] + r,layerShape[0])
-        cmin = np.max(point[1] - r,0)
-        cmax = np.min(point[1] + r,layerShape[1])
-
-        localX = point[0] - rmin
-        localY = point[1] - cmin
-
-        return (rmax, cmax), (localY, localX), indexFromBbox((rmin,rmax,cmin,cmax))
 
     def getEmptyMask(self):
         return np.full(self.image.shape,False)
@@ -198,27 +214,36 @@ class _FieldImageBrightnessMethodBinder():
             raise Exception('Must first specify the method to use: ie. myBind.method(*args), not myBind(*args)')
 
         brightness_list = []
+        N = len(self.fieldImage.objects)
+        i = 0
         for object in self.fieldImage.objects:
-            objectMethod = getattr(object,self.boundName)
-            brightness = objectMethod(*args,**kwargs)
+            if not object.isDiscarded:
+                objectMethod = getattr(object,self.boundName)
+                brightness = objectMethod(*args,**kwargs)
 
-            if brightness > 0:
-                brightness_list.append(brightness)
+                if brightness > 0:
+                    brightness_list.append(brightness)
+
+            print(f'Extracting object brightnesses: {i} / {N} objects complete    ',end='\r')
+            i+=1
 
         brightness_list = sorted(brightness_list)
         brightness_list = np.array(brightness_list)
-        xbrights = np.exp(np.linspace(np.log(np.min(brightness_list)-1),np.log(np.max(brightness_list)),500))
+        xbrights = np.exp(np.linspace(np.log(np.min(brightness_list)),np.log(np.max(brightness_list)),500))
         nBrighter = [np.sum(brightness_list >= val) for val in xbrights]
         nBrighter = np.array(nBrighter)
 
         return xbrights, nBrighter
 
 class AstronomicalObject():
-    def __init__(self,objectMask,parentImage):
+
+    def __init__(self,objectMask,parentImageField):
         self.numberPixels = np.sum(objectMask)
-        self._extractCropped(objectMask, parentImage)
+        self.parentImageField =  parentImageField
+        self._extractCropped(objectMask, parentImageField.image)
         self._computeCentreProperties()
         self._computePeakProperties()
+        self.isDiscarded = False
 
     def _extractCropped(self, objectMask, parentImage):
         self.bbox = bbox(objectMask)
@@ -257,5 +282,82 @@ class AstronomicalObject():
     def getNaiveBrightness(self):
         return np.sum(self.croppedPixel)
 
-    def getBrightnessWithoutBackground(self,background):
+    def getBrightnessWithoutBackground(self):
+        background = self.parentImageField.backgroundMean
         return np.sum(self.croppedPixel) - self.numberPixels * background
+
+    def getBrightnessWithoutLocalBackground(self):
+        background = self.getLocalBackground()
+        return np.sum(self.croppedPixel) - self.numberPixels * background
+
+    def getCircularApertureBrightness(self,r=7,background=None):
+        image = self.parentImageField.image
+
+        if background is None:
+            background = self.parentImageField.backgroundMean
+
+        if background == 'local':
+            background = self.getLocalBackground()
+
+        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
+        includeMask = ~self._maskOtherObjectsAndEdge(r)
+
+        pixelsInAperture = image[sliceIndex]
+        brightness = np.sum(pixelsInAperture[includeMask])
+        return brightness - background * np.sum(includeMask)
+
+    @functools.cache
+    def getLocalBackground(self,r=20):
+        image = self.parentImageField.image
+
+        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
+        includeMask = ~self._maskAllObjectsAndEdge(r)
+        
+        backgroundPixles = image[sliceIndex][includeMask]
+        background = np.sum(backgroundPixles)/np.sum(includeMask)
+        if np.sum(includeMask) < 50:
+            background = self.parentImageField.backgroundMean
+        return background
+
+    @functools.cache
+    def _getCroppedCircularAperture(self, r) -> Tuple:
+        imageShape = self.parentImageField.image.shape
+        globalCentrePoint = (round(self.globalCentreMean[0]), round(self.globalCentreMean[1]))
+        maskShape, localPoint, sliceIndex = squareMaskAroundPoint(globalCentrePoint,r,imageShape)
+        mask = circularMask(r)
+        placementMatrix = np.zeros(maskShape)
+        placementMatrix[localPoint] = 1
+        if mask.shape[0] != maskShape[0] or mask.shape[1] != maskShape[1]:
+            aperture = ndimage.convolve(placementMatrix,mask,mode='constant').astype(bool)
+        else:
+            aperture = mask
+        return sliceIndex,placementMatrix,aperture
+
+    @functools.cache
+    def _maskOtherObjectsAndEdge(self, r) -> np.ndarray:
+        globalObjectMask = self.parentImageField.globalObjectMask
+        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
+
+        localCentrePoint = (
+            round(self.localCentreMean[1]) - (self.croppedMask.shape[0])//2,
+            round(self.localCentreMean[0]) - (self.croppedMask.shape[1])//2
+        )
+        recroppedObjectMask = ndimage.convolve(
+            placementMatrix,self.croppedMask,mode='constant',origin=np.array(localCentrePoint)
+        ).astype(bool)
+        mask = globalObjectMask[sliceIndex] & ~recroppedObjectMask
+        mask[~aperture] = 1
+        return mask
+
+    @functools.cache
+    def _maskAllObjectsAndEdge(self, r) -> np.ndarray:
+        globalObjectMask = self.parentImageField.globalObjectMask
+        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
+
+        mask = globalObjectMask[sliceIndex]
+        mask[~aperture] = 1
+        return mask
+
+    @property
+    def shape(self):
+        return self.croppedMask.shape
