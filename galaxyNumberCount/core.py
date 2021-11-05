@@ -110,9 +110,6 @@ class FieldImage():
         
         printC(bcolors.OKBLUE, f'Background is {self.backgroundMean:.5g} +/- {self.backgroundStd:.3g} ({self.backgroundStd2:.3g})')
         printC(bcolors.OKCYAN, f'Threshold for galaxies is {self.galaxy_significance_threshold:.4g}')
-        # printC(bcolors.OKCYAN,
-        #     f'This gives a <{self.pvalueForThreshold*100:.1g}% chance that one point of noise will be mislabled as a galaxy'
-        # )
 
     def plotBackground(self,xlim=[3200,3600]):
         self._ensureBackground()
@@ -255,15 +252,28 @@ class FieldImage():
         return globalObjectMask
 
 class _FieldImageBrightnessMethodBinder():
+    """Samples the brightness of all objects not marked as discard. The method to use should be
+    specified by calling a AstronomicalObject method as if it were a method of _FieldBrightnessMethodBinder,
+    including appropriate arguments.
+    
+    Example:
+        myInstance = _FieldImageBrightnessMethodBinder(myFieldImage)
+        xBrights, nBrighter = myInstance.getCircularApertureBrightness(r=12,background='local')
+    """
     def __init__(self,img):
         self.fieldImage = img
         self.boundName = None
 
     def __getattr__(self, name: str):
+        """Captures the method name to use, returning self
+        """
         self.boundName = name
         return self
 
     def __call__(self, *args, **kwargs):
+        """Caputres the calling arguments to use, then iterates over all objects capturing the 
+        brightness using the specified method and arguments
+        """
         if self.boundName is None:
             raise Exception('Must first specify the method to use: ie. myBind.method(*args), not myBind(*args)')
 
@@ -278,16 +288,16 @@ class _FieldImageBrightnessMethodBinder():
                 if brightness > 0:
                     brightness_list.append(brightness)
 
-            print(f'Extracting object brightnesses: {i} / {N} objects complete    ',end='\r')
+            print(f'Extracting object brightnesses: {i} / {N} objects complete, Method: {self.boundName}                     ',end='\r')
             i+=1
 
         brightness_list = sorted(brightness_list)
         brightness_list = np.array(brightness_list)
-        xbrights = np.exp(np.linspace(np.log(np.min(brightness_list)),np.log(np.max(brightness_list)),500))
-        nBrighter = [np.sum(brightness_list >= val) for val in xbrights]
+        xBrights = np.exp(np.linspace(np.log(np.min(brightness_list)),np.log(np.max(brightness_list)),500))
+        nBrighter = [np.sum(brightness_list >= val) for val in xBrights]
         nBrighter = np.array(nBrighter)
 
-        return xbrights, nBrighter
+        return xBrights, nBrighter
 
 class AstronomicalObject():
 
@@ -298,6 +308,8 @@ class AstronomicalObject():
         self._computeCentreProperties()
         self._computePeakProperties()
         self.isDiscarded = False
+        self.overlapsBorder = False
+        self._discardInBorderRegion()
 
     def _discardInBorderRegion(self):
         borderMaskSlice = self.parentImageField.borderFlagRegion[indexFromBbox(self.bbox)].copy()
@@ -354,33 +366,24 @@ class AstronomicalObject():
         background = self.getLocalBackground()
         return np.sum(self.croppedPixel) - self.numberPixels * background
 
-    def getCircularApertureBrightness(self,r=7,background=None):
+    def getCircularApertureBrightness(self,r=7,background=None,**localBackgroundKwargs):
         image = self.parentImageField.image
 
         if background is None:
             background = self.parentImageField.backgroundMean
 
         if background == 'local':
-            background = self.getLocalBackground()
+            background = self.getLocalBackground(**localBackgroundKwargs)
 
         sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
         includeMask = ~self._maskOtherObjectsAndEdge(r)
 
         pixelsInAperture = image[sliceIndex]
         brightness = np.sum(pixelsInAperture[includeMask])
-        # fig, axs = plt.subplots(2,2)
-        # axs = axs.flatten()
-        # plt.sca(axs[0])
-        # plt.imshow(np.log(pixelsInAperture))
-        # plt.sca(axs[1])
-        # plt.imshow(includeMask)
-        # plt.sca(axs[2])
-        # plt.scatter()
-        # plt.show()
         return brightness - background * np.sum(includeMask)
 
     @functools.cache
-    def getLocalBackground(self,r=20,dilateObjectMask=2):
+    def getLocalBackground(self,r=20,dilateObjectMask=3,minimumPixels=50):
         image = self.parentImageField.image
 
         sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
@@ -388,7 +391,7 @@ class AstronomicalObject():
         
         backgroundPixles = image[sliceIndex][includeMask]
         background = np.sum(backgroundPixles)/np.sum(includeMask)
-        if np.sum(includeMask) < 50:
+        if np.sum(includeMask) < minimumPixels:
             background = self.parentImageField.backgroundMean
         return background
 
