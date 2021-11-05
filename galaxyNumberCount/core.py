@@ -2,6 +2,7 @@ from math import pi
 import re
 from typing import Tuple
 import numpy as np
+from numpy.core.function_base import logspace
 from scipy.optimize.minpack import curve_fit
 import scipy.stats
 from scipy import ndimage
@@ -37,13 +38,13 @@ def circularMask(radius):
     return mask
 
 def squareMaskAroundPoint(point,r,layerShape):
-        rmin = np.max([point[1] - r,0])
-        rmax = np.min([point[1] + r,layerShape[0]-1])
-        cmin = np.max([point[0] - r,0])
-        cmax = np.min([point[0] + r,layerShape[1]-1])
+        rmin = np.max([point[0] - r,0])
+        rmax = np.min([point[0] + r,layerShape[0]-1])
+        cmin = np.max([point[1] - r,0])
+        cmax = np.min([point[1] + r,layerShape[1]-1])
 
-        localY = point[1] - rmin
-        localX = point[0] - cmin
+        localX = point[0] - rmin
+        localY = point[1] - cmin
 
         maskShape = (rmax-rmin+1, cmax-cmin+1)
         localPoint = (localX,localY)
@@ -178,20 +179,36 @@ class FieldImage():
 
     def _dilateObjectMask(self, includeMask, firstPixel, coreRemaining=None):
         
-        #localShape, localFirstPixel, globalBox = self._maskAroundPoint(firstPixel,20,self.image.shape)
+        localShape, localFirstPixel, globalSlice = squareMaskAroundPoint(firstPixel,15,self.image.shape)
         
-        objectMask = self.getEmptyMask()
-        objectMask[firstPixel] = True
+        objectMask = np.zeros(localShape)
+        objectMask[localFirstPixel] = True
         objectNumberPixels = np.sum(objectMask)
+        currentIncludeMask = includeMask[globalSlice]
 
         changeNumberPixels = 1
+        i = 0
 
         while changeNumberPixels != 0:
             print(f'Core pixels remaining: {coreRemaining} --- Object pixels: {objectNumberPixels}       ',end='\r')
-            objectMask = ndimage.binary_dilation(objectMask,mask=includeMask,iterations=10)
+            if i == 2:
+                currentIncludeMask = includeMask
+                objectMask = self._dilate_expandMask(globalSlice, objectMask)
+            objectMask = ndimage.binary_dilation(objectMask,mask=currentIncludeMask,iterations=14)
             newObjectNumberPixels = np.sum(objectMask)
             changeNumberPixels = newObjectNumberPixels - objectNumberPixels
             objectNumberPixels = newObjectNumberPixels
+            i = i+1
+
+        if i < 3:
+            objectMask = self._dilate_expandMask(globalSlice, objectMask)
+
+        return objectMask
+
+    def _dilate_expandMask(self, globalSlice, objectMask):
+        expandedMask = self.getEmptyMask()
+        expandedMask[globalSlice] = objectMask
+        objectMask = expandedMask.astype(bool)
         return objectMask
 
     def getEmptyMask(self):
@@ -304,6 +321,15 @@ class AstronomicalObject():
 
         pixelsInAperture = image[sliceIndex]
         brightness = np.sum(pixelsInAperture[includeMask])
+        # fig, axs = plt.subplots(2,2)
+        # axs = axs.flatten()
+        # plt.sca(axs[0])
+        # plt.imshow(pixelsInAperture)
+        # plt.sca(axs[1])
+        # plt.imshow(includeMask)
+        # plt.sca(axs[2])
+        # plt.imshow(self.croppedPixel)
+        # plt.show()
         return brightness - background * np.sum(includeMask)
 
     @functools.cache
@@ -322,7 +348,7 @@ class AstronomicalObject():
     @functools.cache
     def _getCroppedCircularAperture(self, r) -> Tuple:
         imageShape = self.parentImageField.image.shape
-        globalCentrePoint = (round(self.globalCentreMean[0]), round(self.globalCentreMean[1]))
+        globalCentrePoint = (round(self.globalCentreMean[1]), round(self.globalCentreMean[0]))
         maskShape, localPoint, sliceIndex = squareMaskAroundPoint(globalCentrePoint,r,imageShape)
         mask = circularMask(r)
         placementMatrix = np.zeros(maskShape)
@@ -330,7 +356,7 @@ class AstronomicalObject():
         if mask.shape[0] != maskShape[0] or mask.shape[1] != maskShape[1]:
             aperture = ndimage.convolve(placementMatrix,mask,mode='constant').astype(bool)
         else:
-            aperture = mask
+            aperture = mask.astype(bool)
         return sliceIndex,placementMatrix,aperture
 
     @functools.cache
@@ -346,7 +372,7 @@ class AstronomicalObject():
             placementMatrix,self.croppedMask,mode='constant',origin=np.array(localCentrePoint)
         ).astype(bool)
         mask = globalObjectMask[sliceIndex] & ~recroppedObjectMask
-        mask[~aperture] = 1
+        mask[~aperture] = True
         return mask
 
     @functools.cache

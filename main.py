@@ -16,7 +16,7 @@ USE_CACHED = True
 if USE_CACHED:
     CACHE_PART_MINUS_3_STD = path.join(ROOT_PATH,'FieldImageCache_4000x1000_0_-3std.pickle')
     CACHE_ALL_MINUS_3_STD = path.join(ROOT_PATH,'FieldImageCache_ALL_0_-3std.pickle')
-    CACHE_PATH = CACHE_ALL_MINUS_3_STD
+    #CACHE_PATH = CACHE_ALL_MINUS_3_STD
 
 ### END CONFIG ###
 
@@ -31,12 +31,12 @@ else:
     img.printSignificanceThresholdInfo()
     img.printBackgroundInfo()
 
-    # img.blackoutRectangleOrMask((slice(0,-1),slice(0,1000)))
-    # img.blackoutRectangleOrMask((slice(0,4000),slice(0,-1)))
+    img.blackoutRectangleOrMask((slice(0,-1),slice(1000,-1)))
+    img.blackoutRectangleOrMask((slice(1000,-1),slice(0,-1)))
 
     img.identifyObjects(
-        img.galaxy_significance_threshold + 0 * img.backgroundStd,
-        img.galaxy_significance_threshold - 3 * img.backgroundStd
+        img.galaxy_significance_threshold + 2 * img.backgroundStd,
+        img.galaxy_significance_threshold - 2 * img.backgroundStd
     )
     with open(CACHE_PATH,'wb') as file:
         pickle.dump(img,file)
@@ -55,8 +55,6 @@ for object in img.objects:
 
 image = img.image.copy()
 image[~img.globalObjectMask] = 0
-plt.imshow(np.log(image))
-plt.show()
 
 plt.plot(
     *img.brightnessCount().getBrightnessWithoutBackground(),
@@ -64,7 +62,7 @@ plt.plot(
 )
 plt.plot(
     *img.brightnessCount().getBrightnessWithoutLocalBackground(),
-    marker='',label='Naive | Subtracted local'
+    marker='',label='Naive | Local background'
 )
 plt.plot(
     *img.brightnessCount().getCircularApertureBrightness(15),
