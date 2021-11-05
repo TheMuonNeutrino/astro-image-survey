@@ -244,6 +244,16 @@ class FieldImage():
     def brightnessCount(self):
         return _FieldImageBrightnessMethodBinder(img=self)
 
+    @functools.cache
+    def dilatedGlobalObjectMask(self, iterations):
+        globalObjectMask = self.globalObjectMask
+        if iterations != 0:
+            globalObjectMask = ndimage.binary_dilation(
+                globalObjectMask,iterations=iterations
+            ).astype(bool)
+            
+        return globalObjectMask
+
 class _FieldImageBrightnessMethodBinder():
     def __init__(self,img):
         self.fieldImage = img
@@ -370,11 +380,11 @@ class AstronomicalObject():
         return brightness - background * np.sum(includeMask)
 
     @functools.cache
-    def getLocalBackground(self,r=20):
+    def getLocalBackground(self,r=20,dilateObjectMask=2):
         image = self.parentImageField.image
 
         sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
-        includeMask = ~self._maskAllObjectsAndEdge(r)
+        includeMask = ~self._maskAllObjectsAndEdge(r,dilateObjectMask=dilateObjectMask)
         
         backgroundPixles = image[sliceIndex][includeMask]
         background = np.sum(backgroundPixles)/np.sum(includeMask)
@@ -414,8 +424,9 @@ class AstronomicalObject():
         return mask
 
     @functools.cache
-    def _maskAllObjectsAndEdge(self, r) -> np.ndarray:
-        globalObjectMask = self.parentImageField.globalObjectMask
+    def _maskAllObjectsAndEdge(self, r, dilateObjectMask=0) -> np.ndarray:
+        globalObjectMask = self.parentImageField.dilatedGlobalObjectMask(dilateObjectMask)
+
         sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
 
         mask = globalObjectMask[sliceIndex]
