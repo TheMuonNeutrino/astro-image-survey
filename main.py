@@ -11,12 +11,12 @@ ROOT_PATH = path.dirname(__file__)
 MOSIC_PATH = path.join(ROOT_PATH,'ExtragalacticFieldSurvey_A1.fits')
 CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache.pickle')
 
-USE_CACHED = True
+USE_CACHED = False
 
 if USE_CACHED:
     CACHE_PART_MINUS_3_STD = path.join(ROOT_PATH,'FieldImageCache_4000x1000_0_-3std.pickle')
     CACHE_ALL_MINUS_3_STD = path.join(ROOT_PATH,'FieldImageCache_ALL_0_-3std.pickle')
-    #CACHE_PATH = CACHE_ALL_MINUS_3_STD
+    CACHE_PATH = CACHE_ALL_MINUS_3_STD
 
 ### END CONFIG ###
 
@@ -26,17 +26,18 @@ if USE_CACHED:
     img.printBackgroundInfo()
 else:
     img = core.FieldImage(MOSIC_PATH)
-    img.blackoutRectangleOrMask((slice(1038,3094),slice(2482,-1)))
+
+    img.blackoutAndCropBorderRegion()
+
+    print(f'Image contains {np.sum(img.deadPixels)} dead pixels')
 
     img.printSignificanceThresholdInfo()
     img.printBackgroundInfo()
 
-    img.blackoutRectangleOrMask((slice(0,-1),slice(1000,-1)))
-    img.blackoutRectangleOrMask((slice(1000,-1),slice(0,-1)))
-
     img.identifyObjects(
         img.galaxy_significance_threshold + 2 * img.backgroundStd,
-        img.galaxy_significance_threshold - 2 * img.backgroundStd
+        img.galaxy_significance_threshold - 2 * img.backgroundStd,
+        (slice(0,1000), slice(0,1000))
     )
     with open(CACHE_PATH,'wb') as file:
         pickle.dump(img,file)
@@ -47,23 +48,24 @@ for object in img.objects:
     if object.shape[0] > 50 or object.shape[1] > 50:
         object.isDiscarded = True
 
-    if object.numberPixels > 1 and object.getNaiveBrightness() == 0:
-        plt.imshow(object.croppedPixel)
-        plt.scatter(*object.localCentreMean)
-        plt.scatter(*object.localPeak)
+    if object.numberPixels > 1 and not object.isDiscarded and False:
+        plt.imshow(np.log(object.croppedPixel))
+        plt.scatter(*object.localCentreMean, label='Mean Centre')
+        plt.scatter(*object.localPeak, label='Peak')
+        plt.legend()
         plt.show()
 
 image = img.image.copy()
 image[~img.globalObjectMask] = 0
 
-plt.plot(
-    *img.brightnessCount().getBrightnessWithoutBackground(),
-    marker='',label='Naive | Subtracted background'
-)
-plt.plot(
-    *img.brightnessCount().getBrightnessWithoutLocalBackground(),
-    marker='',label='Naive | Local background'
-)
+# plt.plot(
+#     *img.brightnessCount().getBrightnessWithoutBackground(),
+#     marker='',label='Naive | Subtracted background'
+# )
+# plt.plot(
+#     *img.brightnessCount().getBrightnessWithoutLocalBackground(),
+#     marker='',label='Naive | Local background'
+# )
 plt.plot(
     *img.brightnessCount().getCircularApertureBrightness(15),
     marker='',label='Aperture | Subtracted background'

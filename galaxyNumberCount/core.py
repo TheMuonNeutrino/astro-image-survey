@@ -1,8 +1,5 @@
-from math import pi
-import re
 from typing import Tuple
 import numpy as np
-from numpy.core.function_base import logspace
 from scipy.optimize.minpack import curve_fit
 import scipy.stats
 from scipy import ndimage
@@ -48,9 +45,10 @@ def squareMaskAroundPoint(point,r,layerShape):
 
         maskShape = (rmax-rmin+1, cmax-cmin+1)
         localPoint = (localX,localY)
-        sliceIndex = indexFromBbox((cmin,cmax,rmin,rmax))
+        bbox = (cmin,cmax,rmin,rmax)
+        sliceIndex = indexFromBbox(bbox)
 
-        return maskShape, localPoint, sliceIndex
+        return maskShape, localPoint, sliceIndex, bbox
 
 class FieldImage():
     def __init__(self,filePath = None):
@@ -137,15 +135,32 @@ class FieldImage():
         if not 'backgroundMean' in dir(self):
             self.computeBackground()
 
-    def blackoutRectangleOrMask(self,indicies_or_mask):
-        self.image[indicies_or_mask] = 0
-
-        if not 'blackoutRegion' in dir(self):
-            self.blackoutRegion = self.getEmptyMask()
+    def blackoutAndCropBorderRegion(self,r=100,borderPixelValue=3421):        
+        self.blackoutRegion = self.getEmptyMask()
+        self.blackoutRegion[0,:] = True
+        self.blackoutRegion[-1,:] = True
+        self.blackoutRegion[:,0] = True
+        self.blackoutRegion[:,-1] = True
         
-        self.blackoutRegion[indicies_or_mask] = True
+        firstExpansionPixels = (self.image == borderPixelValue) | self.blackoutRegion
 
-    def identifyObjects(self,threshold=None,expandThreshold=None):
+        changeNumberPixels = 1
+        numberPixels = 0
+        while changeNumberPixels != 0:
+            self.blackoutRegion = ndimage.binary_dilation(self.blackoutRegion,mask=firstExpansionPixels,iterations=50)
+            newNumberPixels = np.sum(self.blackoutRegion)
+            changeNumberPixels = newNumberPixels - numberPixels
+            numberPixels = newNumberPixels
+        self.blackoutRegion = ndimage.binary_dilation(self.blackoutRegion,iterations=r)
+
+        self.image = self.image[r:-r,r:-r].copy()
+        self.blackoutRegion = self.blackoutRegion[r:-r,r:-r].copy()
+        self.deadPixels = self.deadPixels[r:-r,r:-r].copy()
+
+        self.borderFlagRegion = ndimage.binary_dilation(self.blackoutRegion,iterations=1) & ~self.blackoutRegion
+        self.image[self.blackoutRegion] = 0
+
+    def identifyObjects(self,threshold=None,expandThreshold=None,searchRegion=None):
 
         if threshold is None:
             self._ensureBackground()
@@ -155,8 +170,14 @@ class FieldImage():
             self._ensureBackground()
             expandThreshold = self.galaxy_significance_threshold
 
+        if searchRegion is None:
+            searchRegion = ( slice(None,None),slice(None,None) )
+        searchMask = self.getEmptyMask()
+        searchMask[searchRegion] = True
+
         remainingCorePixels = self.image.copy()
-        remainingCoreMask = self.image > threshold
+        remainingCoreMask = (self.image > threshold)
+        remainingCoreMask[~searchMask] = False
         expandMask = self.image > expandThreshold
         self.globalObjectMask = self.getEmptyMask()
 
@@ -169,17 +190,22 @@ class FieldImage():
             remainingCorePixels[np.bitwise_not(remainingCoreMask)] = 0
             firstPixel = np.unravel_index(remainingCorePixels.flatten().argmax(),self.image.shape)
 
-            objectMask = self._dilateObjectMask(expandMask, firstPixel,totalPixelsRemaining)
-            remainingCoreMask = remainingCoreMask & np.bitwise_not(objectMask)
+            fullObjectMask, smallObjectMask, bboxObject = self._dilateObjectMask(
+                expandMask, firstPixel,totalPixelsRemaining
+            )
+            remainingCoreMask = remainingCoreMask & np.bitwise_not(fullObjectMask)
             totalPixelsRemaining = np.sum(remainingCoreMask)
-            self.globalObjectMask = self.globalObjectMask | objectMask
+            self.globalObjectMask = self.globalObjectMask | fullObjectMask
 
-            self.objects.append(AstronomicalObject(objectMask,self))
+            if smallObjectMask is not None:
+                self.objects.append(AstronomicalObject(smallObjectMask,self,bboxObject))
+            else:
+                self.objects.append(AstronomicalObject(fullObjectMask,self))
             
 
     def _dilateObjectMask(self, includeMask, firstPixel, coreRemaining=None):
         
-        localShape, localFirstPixel, globalSlice = squareMaskAroundPoint(firstPixel,15,self.image.shape)
+        localShape, localFirstPixel, globalSlice, bbox = squareMaskAroundPoint(firstPixel,15,self.image.shape)
         
         objectMask = np.zeros(localShape)
         objectMask[localFirstPixel] = True
@@ -201,9 +227,10 @@ class FieldImage():
             i = i+1
 
         if i < 3:
-            objectMask = self._dilate_expandMask(globalSlice, objectMask)
-
-        return objectMask
+            fullObjectMask = self._dilate_expandMask(globalSlice, objectMask)
+            return fullObjectMask, objectMask, bbox
+        else:
+            return objectMask, None, None
 
     def _dilate_expandMask(self, globalSlice, objectMask):
         expandedMask = self.getEmptyMask()
@@ -254,17 +281,27 @@ class _FieldImageBrightnessMethodBinder():
 
 class AstronomicalObject():
 
-    def __init__(self,objectMask,parentImageField):
+    def __init__(self,objectMask,parentImageField,object_bbox=None):
         self.numberPixels = np.sum(objectMask)
         self.parentImageField =  parentImageField
-        self._extractCropped(objectMask, parentImageField.image)
+        self._extractCropped(objectMask, parentImageField.image, object_bbox)
         self._computeCentreProperties()
         self._computePeakProperties()
         self.isDiscarded = False
 
-    def _extractCropped(self, objectMask, parentImage):
+    def _discardInBorderRegion(self):
+        borderMaskSlice = self.parentImageField.borderFlagRegion[indexFromBbox(self.bbox)].copy()
+        if np.sum(borderMaskSlice) > 0:
+            self.overlapsBorder = True
+            self.isDiscarded = True
+
+    def _extractCropped(self, objectMask, parentImage, object_bbox=None):
         self.bbox = bbox(objectMask)
         self.croppedMask = objectMask[indexFromBbox(self.bbox)].copy()
+        if object_bbox is not None:
+            cmin, cmax, rmin, rmax = self.bbox
+            cmin_g, cmax_g, rmin_g, rmax_g = object_bbox
+            self.bbox = (cmin + cmin_g, cmax + cmin_g, rmin + rmin_g, rmax + rmin_g)
         self.croppedPixel = parentImage[indexFromBbox(self.bbox)].copy()
         self.croppedPixel[np.bitwise_not(self.croppedMask)] = 0
 
@@ -324,11 +361,11 @@ class AstronomicalObject():
         # fig, axs = plt.subplots(2,2)
         # axs = axs.flatten()
         # plt.sca(axs[0])
-        # plt.imshow(pixelsInAperture)
+        # plt.imshow(np.log(pixelsInAperture))
         # plt.sca(axs[1])
         # plt.imshow(includeMask)
         # plt.sca(axs[2])
-        # plt.imshow(self.croppedPixel)
+        # plt.scatter()
         # plt.show()
         return brightness - background * np.sum(includeMask)
 
@@ -348,8 +385,9 @@ class AstronomicalObject():
     @functools.cache
     def _getCroppedCircularAperture(self, r) -> Tuple:
         imageShape = self.parentImageField.image.shape
+        # Why is the correct choice to use the indicies in this order here, rather than 0,1 ?
         globalCentrePoint = (round(self.globalCentreMean[1]), round(self.globalCentreMean[0]))
-        maskShape, localPoint, sliceIndex = squareMaskAroundPoint(globalCentrePoint,r,imageShape)
+        maskShape, localPoint, sliceIndex, bbox = squareMaskAroundPoint(globalCentrePoint,r,imageShape)
         mask = circularMask(r)
         placementMatrix = np.zeros(maskShape)
         placementMatrix[localPoint] = 1
