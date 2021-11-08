@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 import functools
 
-from .colouredPrint import printC, bcolors
+from .utilities import printC, bcolors
 
 def gaussian(x,u,sigma,A):
     return A / (sigma*np.sqrt(2*np.pi)) * np.exp( -(x-u)**2 /(2*sigma**2) )
@@ -251,6 +251,9 @@ class FieldImage():
             
         return globalObjectMask
 
+    def getIncludedObjects(self):
+        return [object for object in self.objects if not object.isDiscarded]
+
 class _FieldImageBrightnessMethodBinder():
     """Samples the brightness of all objects not marked as discard. The method to use should be
     specified by calling a AstronomicalObject method as if it were a method of _FieldBrightnessMethodBinder,
@@ -288,14 +291,16 @@ class _FieldImageBrightnessMethodBinder():
                 if brightness > 0:
                     brightness_list.append(brightness)
 
-            print(f'Extracting object brightnesses: {i} / {N} objects complete, Method: {self.boundName}                     ',end='\r')
             i+=1
+            print(f'Extracting object brightnesses: {i} / {N} objects complete, Method: {self.boundName}                     ',end='\r')
 
         brightness_list = sorted(brightness_list)
         brightness_list = np.array(brightness_list)
         xBrights = np.exp(np.linspace(np.log(np.min(brightness_list)),np.log(np.max(brightness_list)),500))
         nBrighter = [np.sum(brightness_list >= val) for val in xBrights]
         nBrighter = np.array(nBrighter)
+
+        print('')
 
         return xBrights, nBrighter
 
@@ -310,6 +315,7 @@ class AstronomicalObject():
         self.isDiscarded = False
         self.overlapsBorder = False
         self._discardInBorderRegion()
+        self.id = len(parentImageField.objects)
 
     def _discardInBorderRegion(self):
         borderMaskSlice = self.parentImageField.borderFlagRegion[indexFromBbox(self.bbox)].copy()
@@ -439,3 +445,25 @@ class AstronomicalObject():
     @property
     def shape(self):
         return self.croppedMask.shape
+
+    @property
+    def rotationIndependentAspect(self):
+        x = self.shape[0] / self.shape[1]
+        if x >= 1:
+            return x
+        if x < 1:
+            return 1/x
+
+    @property
+    def peakMeanDistance(self):
+        dx = self.localCentreMean[0] - self.localPeak[0]
+        dy = self.localCentreMean[1] - self.localPeak[1]
+        return np.sqrt(dx**2 + dy**2)
+    
+    def plotPixelsAndCentres(self):
+        plt.imshow(np.log(self.croppedPixel))
+        plt.scatter(*self.localCentreMean, label='Mean Centre')
+        plt.scatter(*self.localPeak, label='Peak')
+        plt.legend()
+
+    
