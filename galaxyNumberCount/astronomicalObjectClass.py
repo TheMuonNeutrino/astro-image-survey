@@ -20,7 +20,7 @@ class AstronomicalObject():
         self._computePeakProperties()
         self.isDiscarded = False
         self.overlapsBorder = False
-        self.flagForRemoval = False
+        self.wasSplit = False
         self._discardInBorderRegion()
         self.id = len(parentImageField.objects)
 
@@ -187,7 +187,7 @@ class AstronomicalObject():
         regionsMask = self.getEmptyMask()
 
         while i < len(brightnessThresholds):
-            #print(f"Twin split on {self.id}: Threshold {i+1} / {len(brightnessThresholds)} reached",end='\r')
+            print(f"Twin split on {self.id}: Threshold {i+1} / {len(brightnessThresholds)} reached",end='\r')
 
             thresholdMask = self.croppedPixel >= brightnessThresholds[i]
 
@@ -200,7 +200,7 @@ class AstronomicalObject():
             if not existsDisconnectedPixels:
                 i += 1
             
-        #print('')
+        print('')
 
         if len(subRegions) != 1:
 
@@ -239,7 +239,7 @@ class AstronomicalObject():
             self.parentImageField.objects.append(newAstronomicalObject)
 
         self.isDiscarded = True
-        self.parentImageField.objects.remove(self)
+        self.wasSplit = True
 
     def _twinSplit_promptUserApproval(self, subRegions, subRegionsPixels):
         plt.ion()
