@@ -1,3 +1,4 @@
+from operator import sub
 from typing import Tuple
 import numpy as np
 from scipy.optimize.minpack import curve_fit
@@ -6,8 +7,10 @@ from scipy import ndimage
 import matplotlib.pyplot as plt
 from astropy.io import fits
 import functools
+import warnings
+from os import path
 
-from .utilities import printC, bcolors
+from .utilities import printC, bcolors, pad
 
 def gaussian(x,u,sigma,A):
     return A / (sigma*np.sqrt(2*np.pi)) * np.exp( -(x-u)**2 /(2*sigma**2) )
@@ -49,6 +52,14 @@ def squareMaskAroundPoint(point,r,layerShape):
         sliceIndex = indexFromBbox(bbox)
 
         return maskShape, localPoint, sliceIndex, bbox
+
+def saveObjectPlot(object,i,folderpath):
+    warnings.filterwarnings('ignore')
+    fig = plt.figure()
+    object.plotPixelsAndCentres()
+    plt.savefig(path.join(folderpath,f'{pad(i,4)}_{pad(object.id,4)}.png'))
+    plt.close()
+    warnings.resetwarnings()
 
 class FieldImage():
     def __init__(self,filePath = None):
@@ -389,11 +400,11 @@ class AstronomicalObject():
         return brightness - background * np.sum(includeMask)
 
     @functools.cache
-    def getLocalBackground(self,r=20,dilateObjectMask=3,minimumPixels=50):
+    def getLocalBackground(self,rBackground=20,dilateObjectMaskBackground=3,minimumPixels=50):
         image = self.parentImageField.image
 
-        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
-        includeMask = ~self._maskAllObjectsAndEdge(r,dilateObjectMask=dilateObjectMask)
+        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(rBackground)
+        includeMask = ~self._maskAllObjectsAndEdge(rBackground,dilateObjectMask=dilateObjectMaskBackground)
         
         backgroundPixles = image[sliceIndex][includeMask]
         background = np.sum(backgroundPixles)/np.sum(includeMask)
@@ -417,8 +428,8 @@ class AstronomicalObject():
         return sliceIndex,placementMatrix,aperture
 
     @functools.cache
-    def _maskOtherObjectsAndEdge(self, r) -> np.ndarray:
-        globalObjectMask = self.parentImageField.globalObjectMask
+    def _maskOtherObjectsAndEdge(self, r, dilateObjectMask = 0) -> np.ndarray:
+        globalObjectMask = self.parentImageField.dilatedGlobalObjectMask(dilateObjectMask)
         sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
 
         localCentrePoint = (
@@ -466,4 +477,78 @@ class AstronomicalObject():
         plt.scatter(*self.localPeak, label='Peak')
         plt.legend()
 
-    
+    def getEmptyMask(self):
+        return np.full(self.croppedPixel.shape,False)
+
+    def attemptTwinSplit(self):
+        print('Starting attempted twin split')
+        brightnessThresholds = np.trim_zeros(np.flip(np.unique(self.croppedPixel)))
+        subRegions = []
+        subRegions.append(self.getEmptyMask())
+        subRegions[0][self.localPeak[1],self.localPeak[0]] = True
+        i = 0
+        regionsMask = subRegions[0].copy()
+
+        while i < len(brightnessThresholds):
+            print(f"Threshold {i} / {len(brightnessThresholds)} reached",end='\r')
+            thresholdMask = self.croppedPixel >= brightnessThresholds[i]
+
+            for j, region in enumerate(subRegions):
+                subRegions[j] = ndimage.binary_dilation(
+                    region,
+                    structure=np.ones((5,5)),
+                    mask=thresholdMask & ~(regionsMask & ~region)
+                )
+                regionsMask = regionsMask | subRegions[j]
+
+            disconnectedPixelMask = thresholdMask & ~regionsMask
+            existsDisconnectedPixels = np.sum(disconnectedPixelMask) > 0
+            if existsDisconnectedPixels:
+                print("Disconnected pixels found")
+                fig, ax = plt.subplots(2,max(len(subRegions),3))
+                plt.sca(ax[0][0])
+                plt.imshow(np.log(self.croppedPixel))
+                plt.sca(ax[0][1])
+                plt.imshow(thresholdMask)
+                plt.sca(ax[0][2])
+                plt.imshow(regionsMask)
+                for j, region in enumerate(subRegions):
+                    plt.sca(ax[1][j])
+                    plt.imshow((region))
+                plt.show()
+
+                disconnectedPixels = self.croppedPixel.copy()
+                disconnectedPixels[~disconnectedPixelMask] = 0
+                regionStartIndex = np.unravel_index(
+                    disconnectedPixels.flatten().argmax(),self.croppedPixel.shape
+                )
+                subRegions.append(self.getEmptyMask())
+                subRegions[-1][regionStartIndex] = True
+
+            if not existsDisconnectedPixels:
+                i += 1
+        
+        subRegionsPixels = []
+        for region in subRegions:
+            subRegionsPixels.append(self.croppedPixel.copy())
+            subRegionsPixels[-1][~region] = 0
+
+        print(len(subRegions))
+        return None
+
+        plt.ion()
+
+        fig, ax = plt.subplots(2,len(subRegions))
+        plt.sca(ax[0][0])
+        plt.imshow(np.log(self.croppedPixel))
+        for i, region in enumerate(subRegionsPixels):
+            plt.sca(ax[1][i])
+            plt.imshow(np.log(region))
+        plt.draw()
+
+        approved = ''
+        while not approved.lower() in ['n','y']:
+            approved = input("Approve galaxy twin split (y/n):")
+        
+        plt.close()
+        plt.ioff()

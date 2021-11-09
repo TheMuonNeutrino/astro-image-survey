@@ -13,24 +13,25 @@ ROOT_PATH = path.dirname(__file__)
 MOSIC_PATH = path.join(ROOT_PATH,'ExtragalacticFieldSurvey_A1.fits')
 CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache.pickle')
 
-SNIPPET_IMG_FOLDER = path.join(ROOT_PATH,'snippets_aspect')
+SNIPPET_IMG_FOLDER_TWIN = path.join(ROOT_PATH,'snippets_twin')
+SNIPPET_IMG_FOLDER_DISCARDED = path.join(ROOT_PATH,'snippets_discarded')
 
 USE_CACHED = True
 
+excludeObjectIds = []
+
 if USE_CACHED:
-    CACHE_ALL_MINUS_3_STD = path.join(ROOT_PATH,'FieldImageCache_ALL_0_-3std.pickle')
-    CACHE_ALL_MINUS_2_STD = path.join(ROOT_PATH,'FieldImageCache_ALL_0_-2std.pickle')
-    CACHE_PATH = CACHE_ALL_MINUS_2_STD
+    #CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache_ALL_0_-3std.pickle')
+    CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache_ALL_0_-2std.pickle'); excludeObjectIds = [69, 57, 27]
+    #CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache_ALL_0_-05std.pickle')
 
 ### END CONFIG ###
 
-def saveObjectPlot(object,i):
-    warnings.filterwarnings('ignore')
-    fig = plt.figure()
-    object.plotPixelsAndCentres()
-    plt.savefig(path.join(SNIPPET_IMG_FOLDER,f'{pad(i,4)}_{pad(object.id,4)}.png'))
-    plt.close()
-    warnings.resetwarnings()
+def saveObjectPlot_twin(object,i):
+    core.saveObjectPlot(object,i,SNIPPET_IMG_FOLDER_TWIN)
+
+def saveObjectPlot_discard(object,i):
+    core.saveObjectPlot(object,i,SNIPPET_IMG_FOLDER_DISCARDED)
 
 if __name__ == '__main__':
 
@@ -50,53 +51,47 @@ if __name__ == '__main__':
 
         img.identifyObjects(
             img.galaxy_significance_threshold + 0 * img.backgroundStd,
-            img.galaxy_significance_threshold - 2 * img.backgroundStd,
+            img.galaxy_significance_threshold - 3 * img.backgroundStd,
             #(slice(0,4000), slice(0,900))
         )
         with open(CACHE_PATH,'wb') as file:
             pickle.dump(img,file)
 
-    i = 0
     for object in img.objects:
-        object.id = i
-        i += 1
-        object: core.AstronomicalObject = object
-        object.overlapsBorder = False
-        object._discardInBorderRegion()
-        #object.isDiscarded = False
-        
-        if object.shape[0] > 50 or object.shape[1] > 50:
+        if object.id in excludeObjectIds:
             object.isDiscarded = True
 
     objectsSorted = sorted(img.getIncludedObjects(),key=lambda x: x.peakMeanDistance,reverse=True)
-    objectsSorted = [object for object in objectsSorted if np.min(object.shape) > 1]
+    # clearFolder(SNIPPET_IMG_FOLDER_TWIN)
+    # with multiprocessing.Pool(10) as p:
+    #     p.starmap(saveObjectPlot_twin, zip(objectsSorted, range(200)))
 
-    clearFolder(SNIPPET_IMG_FOLDER)
+    # objectsDiscarded = [object for object in img.objects if object.isDiscarded]
+    # clearFolder(SNIPPET_IMG_FOLDER_DISCARDED)
+    # with multiprocessing.Pool(10) as p:
+    #     p.starmap(saveObjectPlot_discard, zip(objectsDiscarded, range(1000)))
 
-    with multiprocessing.Pool(10) as p:
-        p.starmap(saveObjectPlot, zip(objectsSorted, range(200)))
+    for object in objectsSorted[0:10]:
+        object.attemptTwinSplit()
 
-    exit()
-
-    image = img.image.copy()
-    image[~img.globalObjectMask] = 0
-
-    plt.plot(
-        *img.brightnessCount().getBrightnessWithoutBackground(),
-        marker='',label='Naive | Subtracted background'
-    )
-    plt.plot(
-        *img.brightnessCount().getBrightnessWithoutLocalBackground(),
-        marker='',label='Naive | Local background'
-    )
-    plt.plot(
-        *img.brightnessCount().getCircularApertureBrightness(15),
-        marker='',label='Aperture | Subtracted background'
-    )
-    plt.plot(
-        *img.brightnessCount().getCircularApertureBrightness(15,'local'),
-        marker='',label='Aperture | Local background'
-    )
+    # plt.plot(
+    #     *img.brightnessCount().getBrightnessWithoutBackground(),
+    #     marker='',label='Naive | Subtracted background'
+    # )
+    # plt.plot(
+    #     *img.brightnessCount().getBrightnessWithoutLocalBackground(),
+    #     marker='',label='Naive | Local background'
+    # )
+    # plt.plot(
+    #     *img.brightnessCount().getCircularApertureBrightness(20),
+    #     marker='',label='Aperture | Subtracted background'
+    # )
+    # plt.plot(
+    #     *img.brightnessCount().getCircularApertureBrightness(
+    #         20,'local',rBackground=30,dilateObjectMaskBackground=4
+    #     ),
+    #     marker='',label='Aperture | Local background'
+    # )
     plt.xlabel('Brightness')
     plt.ylabel('Objects brighter')
     plt.yscale('log')

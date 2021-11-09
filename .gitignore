@@ -1,5 +1,5 @@
 *.pickle
 __pycache__/
-/snippets_aspect
+/snippets_*
 
 !*.git.pickle
