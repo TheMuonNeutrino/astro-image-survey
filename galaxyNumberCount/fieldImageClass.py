@@ -21,8 +21,9 @@ class FieldImage():
         self.pvalueForThreshold = 0.05
 
     def importFits(self,filePath):
-        hdulist = fits.open(filePath)
-        self.image = hdulist[0].data
+        with fits.open(filePath) as hdulist:
+            self.image = hdulist[0].data.copy()
+            self.header = hdulist[0].header.copy()
 
     def getSignificanceThresholdInStd(self,p=None):
         number_pixels, significance_threshold_in_std = self._computeStdThreshold(p)
@@ -199,8 +200,22 @@ class FieldImage():
     def getEmptyMask(self):
         return np.full(self.image.shape,False)
 
-    def brightnessCount(self):
-        return _FieldImageBrightnessMethodBinder(img=self)
+    def brightnessCountPlot(self):
+        return _FieldImageBrightnessMethodBinder(img=self,callback=self._brightnessCountPlot_callback)
+
+    def _brightnessCountPlot_callback(self,brightness_list):
+        xBrights = np.exp(np.linspace(np.log(np.min(brightness_list)),np.log(np.max(brightness_list)),500))
+        nBrighter = [np.sum(brightness_list >= val) for val in xBrights]
+        nBrighter = np.array(nBrighter)
+        return xBrights, nBrighter
+
+    def magnitudeCountPlot(self):
+        return _FieldImageBrightnessMethodBinder(self,self._magnitueCountPlot_callback)
+
+    def _magnitueCountPlot_callback(self,brightness_list):
+        xBrights, nBrighter = self._brightnessCountPlot_callback(brightness_list)
+        xMagnitude = self.header['MAGZPT'] - 2.5 * np.log10(xBrights)
+        return xMagnitude, nBrighter
 
     @functools.cache
     def dilatedGlobalObjectMask(self, iterations):
@@ -215,18 +230,33 @@ class FieldImage():
     def getIncludedObjects(self):
         return [object for object in self.objects if not object.isDiscarded]
 
+    def seperateTwins(self):
+        objectsTwins = sorted(self.getIncludedObjects(),key=lambda x: x.peakMeanDistance,reverse=True)
+        objectsTwins = [object for object in objectsTwins if (
+            np.min(object.shape) > 5 and object.peakMeanDistance > 2
+        )]
+        print(f'There are {len(objectsTwins)} potential twins to process')
+
+        for object in objectsTwins:
+            object: AstronomicalObject = object
+            object.attemptTwinSplit(promptForConfirmation=False)
+
+        print("Finished splitting twins")
+        plt.close('all')
+
 class _FieldImageBrightnessMethodBinder():
     """Samples the brightness of all objects not marked as discard. The method to use should be
     specified by calling a AstronomicalObject method as if it were a method of _FieldBrightnessMethodBinder,
     including appropriate arguments.
     
     Example:
-        myInstance = _FieldImageBrightnessMethodBinder(myFieldImage)
+        myInstance = _FieldImageBrightnessMethodBinder(myFieldImage,myFieldImage.myCallback)
         xBrights, nBrighter = myInstance.getCircularApertureBrightness(r=12,background='local')
     """
-    def __init__(self,img):
+    def __init__(self,img,callback):
         self.fieldImage = img
         self.boundName = None
+        self.callback = callback
 
     def __getattr__(self, name: str):
         """Captures the method name to use, returning self
@@ -257,10 +287,8 @@ class _FieldImageBrightnessMethodBinder():
 
         brightness_list = sorted(brightness_list)
         brightness_list = np.array(brightness_list)
-        xBrights = np.exp(np.linspace(np.log(np.min(brightness_list)),np.log(np.max(brightness_list)),500))
-        nBrighter = [np.sum(brightness_list >= val) for val in xBrights]
-        nBrighter = np.array(nBrighter)
+        
 
         print('')
 
-        return xBrights, nBrighter
+        return self.callback(brightness_list)

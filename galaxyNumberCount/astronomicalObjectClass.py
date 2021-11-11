@@ -7,6 +7,7 @@ import functools
 import itertools
 import re
 from copy import deepcopy
+import time
 
 from galaxyNumberCount.core import bbox, circularMask, indexFromBbox, squareMaskAroundPoint
 
@@ -75,11 +76,11 @@ class AstronomicalObject():
         background = self.parentImageField.backgroundMean
         return np.sum(self.croppedPixel) - self.numberPixels * background
 
-    def getBrightnessWithoutLocalBackground(self):
-        background = self.getLocalBackground()
+    def getBrightnessWithoutLocalBackground(self,**localBackgroundKwargs):
+        background = self.getLocalBackground(**localBackgroundKwargs)
         return np.sum(self.croppedPixel) - self.numberPixels * background
 
-    def getCircularApertureBrightness(self,r=7,background=None,**localBackgroundKwargs):
+    def getCircularApertureBrightness(self,r=7,background=None,dilateObjectsMask=0,**localBackgroundKwargs):
         image = self.parentImageField.image
 
         if background is None:
@@ -88,8 +89,8 @@ class AstronomicalObject():
         if background == 'local':
             background = self.getLocalBackground(**localBackgroundKwargs)
 
-        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
-        includeMask = ~self._maskOtherObjectsAndEdge(r)
+        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r,r+dilateObjectsMask)
+        includeMask = ~self._maskOtherObjectsAndEdge(r,dilateObjectsMask)
 
         pixelsInAperture = image[sliceIndex]
         brightness = np.sum(pixelsInAperture[includeMask])
@@ -112,11 +113,13 @@ class AstronomicalObject():
         return background
 
     @functools.cache
-    def _getCroppedCircularAperture(self, r) -> Tuple:
+    def _getCroppedCircularAperture(self, r, d=None) -> Tuple:
+        if d == None:
+            d = r
         imageShape = self.parentImageField.image.shape
         # Why is the correct choice to use the indicies in this order here, rather than 0,1 ?
         globalCentrePoint = (round(self.globalCentreMean[1]), round(self.globalCentreMean[0]))
-        maskShape, localPoint, sliceIndex, bbox = squareMaskAroundPoint(globalCentrePoint,r,imageShape)
+        maskShape, localPoint, sliceIndex, bbox = squareMaskAroundPoint(globalCentrePoint,d,imageShape)
         mask = circularMask(r)
         placementMatrix = np.zeros(maskShape)
         placementMatrix[localPoint] = 1
@@ -129,17 +132,21 @@ class AstronomicalObject():
     @functools.cache
     def _maskOtherObjectsAndEdge(self, r, dilateObjectMask = 0) -> np.ndarray:
         globalObjectMask = self.parentImageField.dilatedGlobalObjectMask(dilateObjectMask)
-        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r)
+        sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(r,r+dilateObjectMask)
 
         localCentrePoint = (
             round(self.localCentreMean[1]) - (self.croppedMask.shape[0])//2,
             round(self.localCentreMean[0]) - (self.croppedMask.shape[1])//2
         )
+        
         recroppedObjectMask = ndimage.convolve(
             placementMatrix,self.croppedMask,mode='constant',origin=np.array(localCentrePoint)
         ).astype(bool)
+        if dilateObjectMask != 0:
+            recroppedObjectMask = ndimage.binary_dilation(recroppedObjectMask,iterations=dilateObjectMask)
         mask = globalObjectMask[sliceIndex] & ~recroppedObjectMask
         mask[~aperture] = True
+        
         return mask
 
     @functools.cache

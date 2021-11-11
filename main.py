@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import pickle
 from galaxyNumberCount.astronomicalObjectClass import AstronomicalObject
 import multiprocessing
+from astropy.io import fits
 
 from galaxyNumberCount import core
 from galaxyNumberCount.fieldImageClass import FieldImage
@@ -45,9 +46,21 @@ if __name__ == '__main__':
     if USE_CACHED:
         with open(CACHE_PATH,'rb') as file:
             img = pickle.load(file)
-        img.printBackgroundInfo()
+        
+        # for object in img.objects:
+        #     if object.id in excludeObjectIds:
+        #         object.isDiscarded = True
+        # img.header = fits.getheader(MOSIC_PATH,0)
+        # img.seperateTwins()
+
+        # with open(CACHE_PATH,'wb') as file:
+        #     pickle.dump(img,file)
     else:
         img = FieldImage(MOSIC_PATH)
+
+        # for key in img.header.keys():
+        #     if str(key).strip() != '':
+        #         print(key, "|", " ".join(str(img.header[key]).split()))
 
         img.blackoutAndCropBorderRegion()
 
@@ -68,62 +81,51 @@ if __name__ == '__main__':
         if object.id in excludeObjectIds:
             object.isDiscarded = True
 
-    print('Saving twins snippets')
-    objectsTwins = sorted(img.getIncludedObjects(),key=lambda x: x.peakMeanDistance,reverse=True)
-    objectsTwins = [object for object in objectsTwins if (
-        np.min(object.shape) > 5 and object.peakMeanDistance > 2
-    )]
     if SAVE_SNIPPETS:
+        objectsTwins = [object for object in img.objects if object.wasSplit]
+        print('Saving twins snippets')
         clearFolder(SNIPPET_IMG_FOLDER_TWIN)
         with multiprocessing.Pool(10) as p:
             p.starmap(saveObjectPlot_twin, zip(objectsTwins, range(30)))
 
-    print('Saving discarded snippets')
-    objectsDiscarded = [object for object in img.objects if object.isDiscarded]
-    if SAVE_SNIPPETS:
+        objectsDiscarded = [object for object in img.objects if object.isDiscarded]
+        print('Saving discarded snippets')
         clearFolder(SNIPPET_IMG_FOLDER_DISCARDED)
         with multiprocessing.Pool(2) as p:
             p.starmap(saveObjectPlot_discard, zip(objectsDiscarded, range(1000)))
     
-    print('Saving largest objects snippets')
-    objectsLargest = sorted(img.getIncludedObjects(),key=lambda x: np.max(x.shape),reverse=True)
-    if SAVE_SNIPPETS:
+        objectsLargest = sorted(img.getIncludedObjects(),key=lambda x: np.max(x.shape),reverse=True)
+        print('Saving largest objects snippets')
         clearFolder(SNIPPET_IMG_FOLDER_LARGEST)
         with multiprocessing.Pool(2) as p:
             p.starmap(saveObjectPlot_largest, zip(objectsLargest, range(30)))
 
-    print(f'There are {len(objectsTwins)} potential twins to process')
-
-    for object in objectsTwins:
-        object: AstronomicalObject = object
-        object.attemptTwinSplit(promptForConfirmation=False)
-
-    print("Finished splitting twins")
-
-    plt.close('all')
+    img: FieldImage = img
 
     plt.plot(
-        *img.brightnessCount().getBrightnessWithoutBackground(),
+        *img.magnitudeCountPlot().getBrightnessWithoutBackground(),
         marker='',label='Naive | Subtracted background'
     )
     plt.plot(
-        *img.brightnessCount().getBrightnessWithoutLocalBackground(),
+        *img.magnitudeCountPlot().getBrightnessWithoutLocalBackground(
+            rBackground=30,dilateObjectMaskBackground=4,minimumPixels=50
+        ),
         marker='',label='Naive | Local background'
     )
     plt.plot(
-        *img.brightnessCount().getCircularApertureBrightness(20),
+        *img.magnitudeCountPlot().getCircularApertureBrightness(12,dilateObjectsMask=3),
         marker='',label='Aperture | Subtracted background'
     )
     plt.plot(
-        *img.brightnessCount().getCircularApertureBrightness(
-            20,'local',rBackground=30,dilateObjectMaskBackground=4
+        *img.magnitudeCountPlot().getCircularApertureBrightness(
+            12,'local',dilateObjectsMask=3,rBackground=30,dilateObjectMaskBackground=4
         ),
         marker='',label='Aperture | Local background'
     )
-    plt.xlabel('Brightness')
+    plt.xlabel('Magnitude')
     plt.ylabel('Objects brighter')
     plt.yscale('log')
-    plt.xscale('log')
+    #plt.xscale('log')
     plt.legend()
     plt.tight_layout()
     plt.show()
