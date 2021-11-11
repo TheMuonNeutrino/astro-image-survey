@@ -3,3 +3,4 @@ __pycache__/
 /snippets_*
 
 !*.git.pickle
+!/snippets_git_*
