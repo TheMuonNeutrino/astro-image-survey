@@ -16,7 +16,7 @@ ROOT_PATH = path.dirname(__file__)
 MOSIC_PATH = path.join(ROOT_PATH,'ExtragalacticFieldSurvey_A1.fits')
 CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache.pickle')
 
-SNIPPET_IMG_FOLDER_TWIN = path.join(ROOT_PATH,'snippets_twin')
+SNIPPET_IMG_FOLDER_TWIN = path.join(ROOT_PATH,'snippets_git_twin')
 SNIPPET_IMG_FOLDER_DISCARDED = path.join(ROOT_PATH,'snippets_discarded')
 SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
 
