@@ -20,6 +20,7 @@ SNIPPET_IMG_FOLDER_TWIN = path.join(ROOT_PATH,'snippets_twin')
 SNIPPET_IMG_FOLDER_DISCARDED = path.join(ROOT_PATH,'snippets_discarded')
 SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
 
+SAVE_SNIPPETS = False
 USE_CACHED = True
 
 excludeObjectIds = []
@@ -72,21 +73,24 @@ if __name__ == '__main__':
     objectsTwins = [object for object in objectsTwins if (
         np.min(object.shape) > 5 and object.peakMeanDistance > 2
     )]
-    clearFolder(SNIPPET_IMG_FOLDER_TWIN)
-    with multiprocessing.Pool(10) as p:
-        p.starmap(saveObjectPlot_twin, zip(objectsTwins, range(30)))
+    if SAVE_SNIPPETS:
+        clearFolder(SNIPPET_IMG_FOLDER_TWIN)
+        with multiprocessing.Pool(10) as p:
+            p.starmap(saveObjectPlot_twin, zip(objectsTwins, range(30)))
 
     print('Saving discarded snippets')
     objectsDiscarded = [object for object in img.objects if object.isDiscarded]
-    clearFolder(SNIPPET_IMG_FOLDER_DISCARDED)
-    with multiprocessing.Pool(2) as p:
-        p.starmap(saveObjectPlot_discard, zip(objectsDiscarded, range(1000)))
+    if SAVE_SNIPPETS:
+        clearFolder(SNIPPET_IMG_FOLDER_DISCARDED)
+        with multiprocessing.Pool(2) as p:
+            p.starmap(saveObjectPlot_discard, zip(objectsDiscarded, range(1000)))
     
     print('Saving largest objects snippets')
     objectsLargest = sorted(img.getIncludedObjects(),key=lambda x: np.max(x.shape),reverse=True)
-    clearFolder(SNIPPET_IMG_FOLDER_LARGEST)
-    with multiprocessing.Pool(2) as p:
-        p.starmap(saveObjectPlot_largest, zip(objectsLargest, range(30)))
+    if SAVE_SNIPPETS:
+        clearFolder(SNIPPET_IMG_FOLDER_LARGEST)
+        with multiprocessing.Pool(2) as p:
+            p.starmap(saveObjectPlot_largest, zip(objectsLargest, range(30)))
 
     print(f'There are {len(objectsTwins)} potential twins to process')
 
