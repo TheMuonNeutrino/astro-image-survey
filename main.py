@@ -23,13 +23,13 @@ SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
 
 SAVE_SNIPPETS = False
 USE_CACHED = True
-USE_CACHED_NUMBER_COUNTS = True
+USE_CACHED_NUMBER_COUNTS = False
 
 excludeObjectIds = []
 
-if USE_CACHED:
-    CACHE_PATH = "FieldImageCache_-3_partial.pickle"; excludeObjectIds = [0, 2, 3, 6]
-    CACHE_PATH = "FieldImageCache_-3_full.pickle"; excludeObjectIds = [1, 3, 4, 13, 11, 7, 15, 13, 27, 57, 69]
+# if USE_CACHED:
+    # CACHE_PATH = "FieldImageCache_-3_partial.pickle"; excludeObjectIds = [0, 2, 3, 6]
+    # CACHE_PATH = "FieldImageCache_-3_full.pickle"; excludeObjectIds = [1, 3, 4, 13, 11, 7, 15, 13, 27, 57, 69]
 
 ### END CONFIG ###
 
@@ -79,7 +79,10 @@ if __name__ == '__main__':
             pickle.dump(img,file)
 
     for object in img.objects:
+        object.discardInBorderRegion()
         if object.id in excludeObjectIds:
+            object.isDiscarded = True
+        if np.max(object.shape) > 200:
             object.isDiscarded = True
 
     if SAVE_SNIPPETS:
@@ -111,21 +114,24 @@ if __name__ == '__main__':
         numberCounts = {
             'Naive | Subtracted background': img.magnitudeCountFit().getBrightnessWithoutBackground(),
             'Naive | Local background': img.magnitudeCountFit().getBrightnessWithoutLocalBackground(
-                rBackground=30,dilateObjectMaskBackground=5,minimumPixels=50
+                rBackground=30,dilateObjectMaskBackground=6,minimumPixels=50
             ),
             'Aperture | Subtracted background': img.magnitudeCountFit().getCircularApertureBrightness(
-                12,dilateObjectsMask=3
+                12,dilateObjectsMask=4
             ),
             'Aperture | Local background': img.magnitudeCountFit().getCircularApertureBrightness(
-                12,'local',dilateObjectsMask=3,rBackground=30,dilateObjectMaskBackground=5
+                12,'local',dilateObjectsMask=4,rBackground=30,dilateObjectMaskBackground=6
             )
         }
         with open(CACHE_PATH_NUMBER_COUNTS,'wb') as file:
             pickle.dump(numberCounts,file)
 
+    #borderExclude = [object for object in img.objects if object.inBorder]
+    #print(len("Number of galaxies excluded for being in border region:",borderExclude))
 
     for key, (xBrights, nBrighter) in numberCounts.items():
         indicies = (nBrighter > 300) & (nBrighter < 1300)
+        #indicies = (nBrighter > 30) & (nBrighter < 500)
         xBrightsFit = xBrights[indicies]
         nBrighterFit = nBrighter[indicies]
         result = scipy.stats.linregress(xBrightsFit, np.log(nBrighterFit))

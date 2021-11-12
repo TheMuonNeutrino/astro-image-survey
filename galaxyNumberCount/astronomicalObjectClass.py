@@ -20,15 +20,16 @@ class AstronomicalObject():
         self._computeCentreProperties()
         self._computePeakProperties()
         self.isDiscarded = False
-        self.overlapsBorder = False
+        self.inBorder = False
         self.wasSplit = False
-        self._discardInBorderRegion()
         self.id = len(parentImageField.objects)
 
-    def _discardInBorderRegion(self):
-        borderMaskSlice = self.parentImageField.borderFlagRegion[indexFromBbox(self.bbox)].copy()
-        if np.sum(borderMaskSlice) > 0:
-            self.overlapsBorder = True
+    def discardInBorderRegion(self):
+        centreInBorder = self.parentImageField.borderFlagRegion[
+            round(self.globalCentreMean[1]),round(self.globalCentreMean[0])
+        ]
+        if centreInBorder:
+            self.inBorder = True
             self.isDiscarded = True
 
     def _extractCropped(self, objectMask, parentImage, object_bbox=None):

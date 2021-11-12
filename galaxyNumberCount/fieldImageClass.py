@@ -94,7 +94,7 @@ class FieldImage():
         if not 'backgroundMean' in dir(self):
             self.computeBackground()
 
-    def blackoutAndCropBorderRegion(self,r=100,borderPixelValue=3421,p_border=1):        
+    def blackoutAndCropBorderRegion(self,r=100,borderPixelValue=3421,p_border=50):        
         self.blackoutRegion = self.getEmptyMask()
         self.blackoutRegion[0,:] = True
         self.blackoutRegion[-1,:] = True
