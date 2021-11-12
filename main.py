@@ -5,17 +5,17 @@ import matplotlib.pyplot as plt
 import pickle
 from galaxyNumberCount.astronomicalObjectClass import AstronomicalObject
 import multiprocessing
-from astropy.io import fits
+import scipy.stats
 
 from galaxyNumberCount import core
 from galaxyNumberCount.fieldImageClass import FieldImage
-import time
 
-from galaxyNumberCount.utilities import clearFolder
+from galaxyNumberCount.utilities import bcolors, clearFolder, printC
 
 ROOT_PATH = path.dirname(__file__)
 MOSIC_PATH = path.join(ROOT_PATH,'ExtragalacticFieldSurvey_A1.fits')
 CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache.pickle')
+CACHE_PATH_NUMBER_COUNTS = path.join(ROOT_PATH,'NumberCountsCache.pickle')
 
 SNIPPET_IMG_FOLDER_TWIN = path.join(ROOT_PATH,'snippets_git_twin')
 SNIPPET_IMG_FOLDER_DISCARDED = path.join(ROOT_PATH,'snippets_discarded')
@@ -23,6 +23,7 @@ SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
 
 SAVE_SNIPPETS = False
 USE_CACHED = True
+USE_CACHED_NUMBER_COUNTS = True
 
 excludeObjectIds = []
 
@@ -102,26 +103,43 @@ if __name__ == '__main__':
 
     img: FieldImage = img
 
-    plt.plot(
-        *img.magnitudeCountPlot().getBrightnessWithoutBackground(),
-        marker='',label='Naive | Subtracted background'
-    )
-    plt.plot(
-        *img.magnitudeCountPlot().getBrightnessWithoutLocalBackground(
-            rBackground=30,dilateObjectMaskBackground=4,minimumPixels=50
-        ),
-        marker='',label='Naive | Local background'
-    )
-    plt.plot(
-        *img.magnitudeCountPlot().getCircularApertureBrightness(12,dilateObjectsMask=3),
-        marker='',label='Aperture | Subtracted background'
-    )
-    plt.plot(
-        *img.magnitudeCountPlot().getCircularApertureBrightness(
-            12,'local',dilateObjectsMask=3,rBackground=30,dilateObjectMaskBackground=4
-        ),
-        marker='',label='Aperture | Local background'
-    )
+    if USE_CACHED_NUMBER_COUNTS:
+        with open(CACHE_PATH_NUMBER_COUNTS,'rb') as file:
+            numberCounts = pickle.load(file)
+
+    else:
+        numberCounts = {
+            'Naive | Subtracted background': img.magnitudeCountFit().getBrightnessWithoutBackground(),
+            'Naive | Local background': img.magnitudeCountFit().getBrightnessWithoutLocalBackground(
+                rBackground=30,dilateObjectMaskBackground=5,minimumPixels=50
+            ),
+            'Aperture | Subtracted background': img.magnitudeCountFit().getCircularApertureBrightness(
+                12,dilateObjectsMask=3
+            ),
+            'Aperture | Local background': img.magnitudeCountFit().getCircularApertureBrightness(
+                12,'local',dilateObjectsMask=3,rBackground=30,dilateObjectMaskBackground=5
+            )
+        }
+        with open(CACHE_PATH_NUMBER_COUNTS,'wb') as file:
+            pickle.dump(numberCounts,file)
+
+
+    for key, (xBrights, nBrighter) in numberCounts.items():
+        indicies = (nBrighter > 300) & (nBrighter < 1300)
+        xBrightsFit = xBrights[indicies]
+        nBrighterFit = nBrighter[indicies]
+        result = scipy.stats.linregress(xBrightsFit, np.log(nBrighterFit))
+        intercept_std_err = result.intercept_stderr
+        slope, intercept, r_value, p_value, std_err = result
+        r_squared = r_value**2
+
+        printC(bcolors.OKGREEN,f'{key} | r^2: {r_squared}')
+        printC(bcolors.OKGREEN,f'    m: {slope:.5g} +/- {std_err:.3g}')
+        printC(bcolors.OKGREEN,f'    c: {intercept:.5g} +/- {intercept_std_err:.3g}')
+        
+        plt.plot(xBrights,nBrighter,marker='.',ls='',label=key)
+        plt.plot(xBrightsFit,np.exp(slope*xBrightsFit + intercept),marker='',label=key + " | Fit")
+
     plt.xlabel('Magnitude')
     plt.ylabel('Objects brighter')
     plt.yscale('log')

@@ -241,12 +241,14 @@ class AstronomicalObject():
             self._twinSplit_commitSplitToParent(subRegions)
 
     def _twinSplit_commitSplitToParent(self, subRegions):
+        self.isDiscarded = True
+        self.wasSplit = True
+        self.splitDaughterIds = []
+
         for region in subRegions:
             newAstronomicalObject = AstronomicalObject(region,self.parentImageField,self.bbox)
             self.parentImageField.objects.append(newAstronomicalObject)
-
-        self.isDiscarded = True
-        self.wasSplit = True
+            self.splitDaughterIds.append(newAstronomicalObject.id)
 
     def _twinSplit_promptUserApproval(self, subRegions, subRegionsPixels):
         plt.ion()

@@ -94,7 +94,7 @@ class FieldImage():
         if not 'backgroundMean' in dir(self):
             self.computeBackground()
 
-    def blackoutAndCropBorderRegion(self,r=100,borderPixelValue=3421):        
+    def blackoutAndCropBorderRegion(self,r=100,borderPixelValue=3421,p_border=1):        
         self.blackoutRegion = self.getEmptyMask()
         self.blackoutRegion[0,:] = True
         self.blackoutRegion[-1,:] = True
@@ -116,7 +116,7 @@ class FieldImage():
         self.blackoutRegion = self.blackoutRegion[r:-r,r:-r].copy()
         self.deadPixels = self.deadPixels[r:-r,r:-r].copy()
 
-        self.borderFlagRegion = ndimage.binary_dilation(self.blackoutRegion,iterations=1) & ~self.blackoutRegion
+        self.borderFlagRegion = ndimage.binary_dilation(self.blackoutRegion,iterations=p_border) & ~self.blackoutRegion
         self.image[self.blackoutRegion] = 0
 
     def identifyObjects(self,threshold=None,expandThreshold=None,searchRegion=None):
@@ -214,6 +214,16 @@ class FieldImage():
 
     def _magnitueCountPlot_callback(self,brightness_list):
         xBrights, nBrighter = self._brightnessCountPlot_callback(brightness_list)
+        xMagnitude = self.header['MAGZPT'] - 2.5 * np.log10(xBrights)
+        return xMagnitude, nBrighter
+    
+    def magnitudeCountFit(self):
+        return _FieldImageBrightnessMethodBinder(self,self._magnitueCountFit_callback)
+
+    def _magnitueCountFit_callback(self,brightness_list):
+        xBrights = brightness_list
+        nBrighter = [np.sum(brightness_list >= val) for val in xBrights]
+        nBrighter = np.array(nBrighter)
         xMagnitude = self.header['MAGZPT'] - 2.5 * np.log10(xBrights)
         return xMagnitude, nBrighter
 
