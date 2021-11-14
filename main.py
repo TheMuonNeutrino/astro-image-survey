@@ -17,19 +17,20 @@ MOSIC_PATH = path.join(ROOT_PATH,'ExtragalacticFieldSurvey_A1.fits')
 CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache.pickle')
 CACHE_PATH_NUMBER_COUNTS = path.join(ROOT_PATH,'NumberCountsCache.pickle')
 
-SNIPPET_IMG_FOLDER_TWIN = path.join(ROOT_PATH,'snippets_git_twin')
+SNIPPET_IMG_FOLDER_TWIN = path.join(ROOT_PATH,'snippets_twin')
 SNIPPET_IMG_FOLDER_DISCARDED = path.join(ROOT_PATH,'snippets_discarded')
 SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
 
-SAVE_SNIPPETS = False
+SAVE_SNIPPETS = True
 USE_CACHED = True
 USE_CACHED_NUMBER_COUNTS = False
 
 excludeObjectIds = []
 
-# if USE_CACHED:
+if USE_CACHED:
     # CACHE_PATH = "FieldImageCache_-3_partial.pickle"; excludeObjectIds = [0, 2, 3, 6]
-    # CACHE_PATH = "FieldImageCache_-3_full.pickle"; excludeObjectIds = [1, 3, 4, 13, 11, 7, 15, 13, 27, 57, 69]
+    CACHE_PATH = "FieldImageCache_full2.pickle"; excludeObjectIds = [0, 1, 2, 3, 4, 7, 15]
+    pass
 
 ### END CONFIG ###
 
@@ -47,21 +48,8 @@ if __name__ == '__main__':
     if USE_CACHED:
         with open(CACHE_PATH,'rb') as file:
             img = pickle.load(file)
-        
-        # for object in img.objects:
-        #     if object.id in excludeObjectIds:
-        #         object.isDiscarded = True
-        # img.header = fits.getheader(MOSIC_PATH,0)
-        # img.seperateTwins()
-
-        # with open(CACHE_PATH,'wb') as file:
-        #     pickle.dump(img,file)
     else:
         img = FieldImage(MOSIC_PATH)
-
-        # for key in img.header.keys():
-        #     if str(key).strip() != '':
-        #         print(key, "|", " ".join(str(img.header[key]).split()))
 
         img.blackoutAndCropBorderRegion()
 
@@ -79,11 +67,12 @@ if __name__ == '__main__':
             pickle.dump(img,file)
 
     for object in img.objects:
-        object.discardInBorderRegion()
         if object.id in excludeObjectIds:
             object.isDiscarded = True
         if np.max(object.shape) > 200:
             object.isDiscarded = True
+
+    img.seperateTwins()
 
     if SAVE_SNIPPETS:
         objectsTwins = [object for object in img.objects if object.wasSplit]
@@ -131,7 +120,7 @@ if __name__ == '__main__':
 
     for key, (xBrights, nBrighter) in numberCounts.items():
         indicies = (nBrighter > 300) & (nBrighter < 1300)
-        #indicies = (nBrighter > 30) & (nBrighter < 500)
+        indicies = (nBrighter > 90) & (nBrighter < 750)
         xBrightsFit = xBrights[indicies]
         nBrighterFit = nBrighter[indicies]
         result = scipy.stats.linregress(xBrightsFit, np.log(nBrighterFit))

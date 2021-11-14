@@ -3,11 +3,21 @@ import matplotlib.pyplot as plt
 import functools
 import warnings
 from os import path
+import scipy.stats
 
 from .utilities import pad
 
 def gaussian(x,u,sigma,A):
     return A / (sigma*np.sqrt(2*np.pi)) * np.exp( -(x-u)**2 /(2*sigma**2) )
+
+def double_gaussian(x,u_1,sigma_1,A_1,u_2,sigma_2,A_2):
+    return gaussian(x,u_1,sigma_1,A_1) + gaussian(x,u_2,sigma_2,A_2)
+
+def double_gaussian_percentile(x,u_1,sigma_1,A_1,u_2,sigma_2,A_2):
+    return (A_1 * scipy.stats.norm.cdf(x,u_1,sigma_1) + A_2 * scipy.stats.norm.cdf(x,u_2,sigma_2))/(A_1+A_2)
+
+def fix_double_gaussian_percentile(u_1,sigma_1,A_1,u_2,sigma_2,A_2,percentile):
+    return lambda x: double_gaussian_percentile(x,u_1,sigma_1,A_1,u_2,sigma_2,A_2) - percentile
 
 def bbox(img):
     rows = np.any(img, axis=1)

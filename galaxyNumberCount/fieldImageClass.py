@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.optimize.minpack import curve_fit
+from scipy.optimize import newton
 import scipy.stats
 from scipy import ndimage
 import matplotlib.pyplot as plt
@@ -7,7 +8,7 @@ from astropy.io import fits
 import functools
 
 from galaxyNumberCount.astronomicalObjectClass import AstronomicalObject
-from galaxyNumberCount.core import gaussian, squareMaskAroundPoint
+from galaxyNumberCount.core import double_gaussian, fix_double_gaussian_percentile, gaussian, squareMaskAroundPoint
 
 from .utilities import printC, bcolors
 
@@ -35,9 +36,9 @@ class FieldImage():
         number_pixels, significance_threshold_in_std = self._computeStdThreshold(p)
         printC('',f'Image has shape {self.image.shape}')
         printC('',f'Image has {number_pixels:.5g} pixels')
-        printC(bcolors.OKCYAN,
-            f'Need to be atleast {significance_threshold_in_std:.3g} standard deviations from the background value (p = {p:.3g})'
-        )
+        # printC(bcolors.OKCYAN,
+        #     f'Need to be atleast {significance_threshold_in_std:.3g} standard deviations from the background value (p = {p:.3g})'
+        # )
 
     def _computeStdThreshold(self, p=None):
         if p is None:
@@ -55,22 +56,24 @@ class FieldImage():
         self.pixel_values_counts_fit_background = self.pixel_values_counts[filter]
 
         coeffs, cov = curve_fit(
-            gaussian,
+            double_gaussian,
             self.pixel_values_fit_background,
             self.pixel_values_counts_fit_background,
-            p0=[3430,10,4e5]
+            p0=[3420,10,350000,3500,20,20000]
         )
 
         self.backgroundFitCoeffs = coeffs
-        self.backgroundMean = coeffs[0]
-        self.backgroundStd = coeffs[1]
-        self.backgroundStd2 = np.std(pixels[(pixels < maxFit) & (pixels > minFit)])
-        self.galaxy_significance_threshold = self.backgroundStd*self.getSignificanceThresholdInStd() + self.backgroundMean
+        self.backgroundMean = (coeffs[0]*coeffs[2] + coeffs[3]*coeffs[5])/(coeffs[2]+coeffs[5])
+        self.backgroundStd = self.backgoundStd2 = np.std(pixels[(pixels < maxFit) & (pixels > minFit)])
+        self.galaxy_significance_threshold = newton(
+            fix_double_gaussian_percentile(*coeffs,1-self.pvalueForThreshold/np.sum(self.pixel_values_counts)),
+            x0=3560
+        )
 
     def printBackgroundInfo(self):
         self._ensureBackground()
         
-        printC(bcolors.OKBLUE, f'Background is {self.backgroundMean:.5g} +/- {self.backgroundStd:.3g} ({self.backgroundStd2:.3g})')
+        #printC(bcolors.OKBLUE, f'Background is {self.backgroundMean:.5g} +/- {self.backgroundStd:.3g} ({self.backgroundStd2:.3g})')
         printC(bcolors.OKCYAN, f'Threshold for galaxies is {self.galaxy_significance_threshold:.4g}')
 
     def plotBackground(self,xlim=[3200,3600]):
@@ -83,7 +86,7 @@ class FieldImage():
         )
         plt.scatter(self.pixel_values,self.pixel_values_counts,ls='None',marker='.')
         plt.scatter(self.pixel_values_fit_background,self.pixel_values_counts_fit_background,ls='None',marker='.')
-        plt.plot(x,gaussian(x,*self.backgroundFitCoeffs))
+        plt.plot(x,double_gaussian(x,*self.backgroundFitCoeffs))
         plt.xlim(3200,3600)
         plt.xlabel('Pixel intensity')
         plt.ylabel('Number of pixels')
