@@ -230,6 +230,20 @@ class FieldImage():
         xMagnitude = self.header['MAGZPT'] - 2.5 * np.log10(xBrights)
         return xMagnitude, nBrighter
 
+    def magnitudeCountBinned(self):
+        return _FieldImageBrightnessMethodBinder(self,self._magnitudeCountBinned_callback)
+
+    def _magnitudeCountBinned_callback(self,brightness_list):
+        xMagnitude = self.header['MAGZPT'] - 2.5 * np.log10(brightness_list)
+        bins = np.arange(
+            0.5 * (np.min(xMagnitude)*2)//1,
+            0.5 * ((np.max(xMagnitude)*2)//1+2),
+            0.5
+        )
+        counts, binEdges = np.histogram(xMagnitude,bins)
+        binCentres = np.cumsum(binEdges[1:]) - np.cumsum(binEdges[:-1])
+        return binCentres, counts
+
     @functools.cache
     def dilatedGlobalObjectMask(self, iterations):
         globalObjectMask = self.globalObjectMask
@@ -243,10 +257,10 @@ class FieldImage():
     def getIncludedObjects(self):
         return [object for object in self.objects if not object.isDiscarded]
 
-    def seperateTwins(self):
+    def seperateTwins(self,minSize=5,minSep=2):
         objectsTwins = sorted(self.getIncludedObjects(),key=lambda x: x.peakMeanDistance,reverse=True)
         objectsTwins = [object for object in objectsTwins if (
-            np.min(object.shape) > 5 and object.peakMeanDistance > 2
+            np.min(object.shape) > minSize and object.peakMeanDistance > minSep
         )]
         print(f'There are {len(objectsTwins)} potential twins to process')
 
