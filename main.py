@@ -58,12 +58,10 @@ if __name__ == '__main__':
         with open(CACHE_PATH,'rb') as file:
             img = pickle.load(file)
         
-        excludeFlagged(excludeObjectIds, img)
-        img.seperateTwins()
         excludeFlagged(excludeObjectIds, img,True)
 
-        # with open(CACHE_PATH,'wb') as file:
-        #     pickle.dump(img,file)
+        with open(CACHE_PATH,'wb') as file:
+            pickle.dump(img,file)
     else:
         img = FieldImage(MOSIC_PATH)
 
@@ -76,7 +74,7 @@ if __name__ == '__main__':
 
         img.identifyObjects(
             img.galaxy_significance_threshold + 0 * img.backgroundStd,
-            img.galaxy_significance_threshold - 3 * img.backgroundStd,
+            img.galaxy_significance_threshold - 2/3 * (img.galaxy_significance_threshold - img.backgroundMean),
             #(slice(0,4000), slice(0,900))
         )
 
@@ -121,10 +119,10 @@ if __name__ == '__main__':
                 rBackground=30,dilateObjectMaskBackground=6,minimumPixels=50
             ),
             'Aperture | Subtracted background': extractionFunc().getCircularApertureBrightness(
-                12,dilateObjectsMask=4
+                12
             ),
             'Aperture | Local background': extractionFunc().getCircularApertureBrightness(
-                12,'local',dilateObjectsMask=4,rBackground=30,dilateObjectMaskBackground=6
+                12,'local',rBackground=30,dilateObjectMaskBackground=6
             )
         }
         with open(CACHE_PATH_NUMBER_COUNTS,'wb') as file:
@@ -133,7 +131,7 @@ if __name__ == '__main__':
     for key, (xMagnitude, nBright) in numberCounts.items():
         nBrighter = np.cumsum(nBright)
         nBrighter_err = np.sqrt(nBright)
-        indicies = (xMagnitude >= 4) & (xMagnitude < 8)
+        indicies = (xMagnitude >= 11) & (xMagnitude < 15.5)
         #indicies = slice(None,None)
         xMagnitudeFit = xMagnitude[indicies]
         nBrighterFit = nBrighter[indicies]

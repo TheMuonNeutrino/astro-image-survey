@@ -241,7 +241,7 @@ class FieldImage():
             0.5
         )
         counts, binEdges = np.histogram(xMagnitude,bins)
-        binCentres = np.cumsum(binEdges[1:]) - np.cumsum(binEdges[:-1])
+        binCentres = binEdges[:-1] + (binEdges[1:] - binEdges[:-1])/2
         return binCentres, counts
 
     @functools.cache
