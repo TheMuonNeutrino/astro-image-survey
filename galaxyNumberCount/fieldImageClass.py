@@ -20,6 +20,7 @@ class FieldImage():
         self.deadPixels = self.image == 0
         self.objects = []
         self.pvalueForThreshold = 0.05
+        self.twinSeperationWasRun = False
 
     def importFits(self,filePath):
         with fits.open(filePath) as hdulist:
@@ -73,6 +74,8 @@ class FieldImage():
     def printBackgroundInfo(self):
         self._ensureBackground()
         
+        print('Background parameters',self.backgroundFitCoeffs)
+        print('Mean background',self.backgroundMean)
         #printC(bcolors.OKBLUE, f'Background is {self.backgroundMean:.5g} +/- {self.backgroundStd:.3g} ({self.backgroundStd2:.3g})')
         printC(bcolors.OKCYAN, f'Threshold for galaxies is {self.galaxy_significance_threshold:.4g}')
 
@@ -269,6 +272,7 @@ class FieldImage():
             object.attemptTwinSplit(promptForConfirmation=False)
 
         print("Finished splitting twins")
+        self.twinSeperationWasRun = True
         plt.close('all')
 
 class _FieldImageBrightnessMethodBinder():

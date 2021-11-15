@@ -83,9 +83,12 @@ class AstronomicalObject():
 
     def getCircularApertureBrightness(self,r=7,background=None,**localBackgroundKwargs):
         # DilateObjectsMask != 0 leads to bad behaviour - Excessive overreporting of brightness
-        dilateObjectsMask=0
+        dilateObjectsMask=1
 
         image = self.parentImageField.image
+
+        if callable(r):
+            r = r(*self.shape)
 
         if background is None:
             background = self.parentImageField.backgroundMean

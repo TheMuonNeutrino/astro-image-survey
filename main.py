@@ -25,11 +25,12 @@ SAVE_SNIPPETS = False
 USE_CACHED = True
 USE_CACHED_NUMBER_COUNTS = False
 
-excludeObjectIds = []
+excludeObjectIds = [0]
 
 if USE_CACHED:
-    # CACHE_PATH = "FieldImageCache_-3_partial.pickle"; excludeObjectIds = [0, 2, 3, 6]
-    CACHE_PATH = "FieldImageCache_full2.pickle"; excludeObjectIds = [0, 1, 2, 3, 4, 7, 15, 27, 70, 58, 13]
+    #excludeObjectIds = [0,1,3,4,13,11,15,17,7,57,27,69,] #minus2_3rd_gap
+    #excludeObjectIds = [0,1,3,4,13,11,15,17,7,58,27,70,] #minus3std
+    excludeObjectIds = [0,1,3,4,13,11,15,17,7,58,27,71,]; CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache_minus0std.pickle')
     pass
 
 ### END CONFIG ###
@@ -58,10 +59,13 @@ if __name__ == '__main__':
         with open(CACHE_PATH,'rb') as file:
             img = pickle.load(file)
         
-        excludeFlagged(excludeObjectIds, img,True)
-
-        with open(CACHE_PATH,'wb') as file:
-            pickle.dump(img,file)
+        if not img.twinSeperationWasRun:
+            excludeFlagged(excludeObjectIds, img)
+            img.seperateTwins(minSep=2)
+            excludeFlagged(excludeObjectIds, img,True)
+            with open(CACHE_PATH,'wb') as file:
+                pickle.dump(img,file)
+        
     else:
         img = FieldImage(MOSIC_PATH)
 
@@ -74,13 +78,11 @@ if __name__ == '__main__':
 
         img.identifyObjects(
             img.galaxy_significance_threshold + 0 * img.backgroundStd,
-            img.galaxy_significance_threshold - 2/3 * (img.galaxy_significance_threshold - img.backgroundMean),
+            img.galaxy_significance_threshold - 0 * img.backgroundStd #2/3 * (img.galaxy_significance_threshold - img.backgroundMean),
             #(slice(0,4000), slice(0,900))
         )
 
         excludeFlagged(excludeObjectIds, img)
-        img.seperateTwins(minSep=1.5)
-        excludeFlagged(excludeObjectIds, img,True)
 
         with open(CACHE_PATH,'wb') as file:
             pickle.dump(img,file)
@@ -91,7 +93,7 @@ if __name__ == '__main__':
         print('Saving twins snippets')
         clearFolder(SNIPPET_IMG_FOLDER_TWIN)
         with multiprocessing.Pool(10) as p:
-            p.starmap(saveObjectPlot_twin, zip(objectsTwins, range(30)))
+            p.starmap(saveObjectPlot_twin, zip(objectsTwins, range(300)))
 
         objectsDiscarded = [object for object in img.objects if object.isDiscarded]
         print('Saving discarded snippets')
@@ -113,16 +115,17 @@ if __name__ == '__main__':
 
     else:
         extractionFunc = img.magnitudeCountBinned
+        rFunc = lambda w, h: int( np.max([6,np.max([w,h])*0.8]) // 1 )
         numberCounts = {
             'Naive | Subtracted background': extractionFunc().getBrightnessWithoutBackground(),
             'Naive | Local background': extractionFunc().getBrightnessWithoutLocalBackground(
                 rBackground=30,dilateObjectMaskBackground=6,minimumPixels=50
             ),
             'Aperture | Subtracted background': extractionFunc().getCircularApertureBrightness(
-                12
+                rFunc
             ),
             'Aperture | Local background': extractionFunc().getCircularApertureBrightness(
-                12,'local',rBackground=30,dilateObjectMaskBackground=6
+                rFunc,'local',rBackground=30,dilateObjectMaskBackground=6
             )
         }
         with open(CACHE_PATH_NUMBER_COUNTS,'wb') as file:
@@ -131,8 +134,7 @@ if __name__ == '__main__':
     for key, (xMagnitude, nBright) in numberCounts.items():
         nBrighter = np.cumsum(nBright)
         nBrighter_err = np.sqrt(nBright)
-        indicies = (xMagnitude >= 11) & (xMagnitude < 15.5)
-        #indicies = slice(None,None)
+        indicies = (xMagnitude >= 12) & (xMagnitude < 16)
         xMagnitudeFit = xMagnitude[indicies]
         nBrighterFit = nBrighter[indicies]
         result = scipy.stats.linregress(xMagnitudeFit, np.log(nBrighterFit))
@@ -144,7 +146,7 @@ if __name__ == '__main__':
         printC(bcolors.OKGREEN,f'    m: {slope:.5g} +/- {std_err:.3g}')
         printC(bcolors.OKGREEN,f'    c: {intercept:.5g} +/- {intercept_std_err:.3g}')
         
-        plt.errorbar(xMagnitude,nBrighter,yerr=nBrighter_err,marker='.',ls='',label=key)
+        plt.errorbar(xMagnitude,nBrighter,yerr=nBrighter_err,marker='.',ls='',label=key,capsize=3)
         plt.plot(xMagnitudeFit,np.exp(slope*xMagnitudeFit + intercept),marker='',label=key + " | Fit")
 
     plt.xlabel('Magnitude')
