@@ -58,6 +58,8 @@ if __name__ == '__main__':
         with open(CACHE_PATH,'rb') as file:
             img = pickle.load(file)
         
+        excludeFlagged(excludeObjectIds, img)
+        img.seperateTwins()
         excludeFlagged(excludeObjectIds, img,True)
 
         # with open(CACHE_PATH,'wb') as file:
