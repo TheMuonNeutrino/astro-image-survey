@@ -24,13 +24,17 @@ SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
 SAVE_SNIPPETS = False
 USE_CACHED = True
 USE_CACHED_NUMBER_COUNTS = False
+ANALYSE_BRIGHT_DISCREPANCY = False
+PLOT_BK = False
+PLOT_BK_DISCREP = False
+SPLIT_TWINS = True
+
+bk_param = {'rBackground':30,'dilateObjectMaskBackground':6, 'minimumPixels':20}
 
 excludeObjectIds = [0]
 
 if USE_CACHED:
-    #excludeObjectIds = [0,1,3,4,13,11,15,17,7,57,27,69,] #minus2_3rd_gap
-    #excludeObjectIds = [0,1,3,4,13,11,15,17,7,58,27,70,] #minus3std
-    excludeObjectIds = [0,1,3,4,13,11,15,17,7,58,27,71,]; CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache_minus0std.pickle')
+    excludeObjectIds = [0,1,3,4,13,11,15,17,7,58,27,70,]
     pass
 
 ### END CONFIG ###
@@ -59,9 +63,9 @@ if __name__ == '__main__':
         with open(CACHE_PATH,'rb') as file:
             img = pickle.load(file)
         
-        if not img.twinSeperationWasRun:
+        if not img.twinSeperationWasRun and SPLIT_TWINS:
             excludeFlagged(excludeObjectIds, img)
-            img.seperateTwins(minSep=2)
+            img.seperateTwins(minSep=1.5)
             excludeFlagged(excludeObjectIds, img,True)
             with open(CACHE_PATH,'wb') as file:
                 pickle.dump(img,file)
@@ -76,9 +80,11 @@ if __name__ == '__main__':
         img.printSignificanceThresholdInfo()
         img.printBackgroundInfo()
 
+        bkThresholdDiff = img.galaxy_significance_threshold - img.backgroundMean
+
         img.identifyObjects(
-            img.galaxy_significance_threshold + 0 * img.backgroundStd,
-            img.galaxy_significance_threshold - 0 * img.backgroundStd #2/3 * (img.galaxy_significance_threshold - img.backgroundMean),
+            img.galaxy_significance_threshold - 0 * bkThresholdDiff,
+            img.galaxy_significance_threshold - 0.5 * bkThresholdDiff,
             #(slice(0,4000), slice(0,900))
         )
 
@@ -95,7 +101,7 @@ if __name__ == '__main__':
         with multiprocessing.Pool(10) as p:
             p.starmap(saveObjectPlot_twin, zip(objectsTwins, range(300)))
 
-        objectsDiscarded = [object for object in img.objects if object.isDiscarded]
+        objectsDiscarded = [object for object in img.objects if (object.isDiscarded and not object.wasSplit)]
         print('Saving discarded snippets')
         clearFolder(SNIPPET_IMG_FOLDER_DISCARDED)
         with multiprocessing.Pool(2) as p:
@@ -117,19 +123,67 @@ if __name__ == '__main__':
         extractionFunc = img.magnitudeCountBinned
         rFunc = lambda w, h: int( np.max([6,np.max([w,h])*0.8]) // 1 )
         numberCounts = {
-            'Naive | Subtracted background': extractionFunc().getBrightnessWithoutBackground(),
+            # 'Naive | Subtracted background': extractionFunc().getBrightnessWithoutBackground(),
             'Naive | Local background': extractionFunc().getBrightnessWithoutLocalBackground(
-                rBackground=30,dilateObjectMaskBackground=6,minimumPixels=50
+                **bk_param
             ),
-            'Aperture | Subtracted background': extractionFunc().getCircularApertureBrightness(
-                rFunc
-            ),
+            # 'Aperture | Subtracted background': extractionFunc().getCircularApertureBrightness(
+            #     rFunc
+            # ),
             'Aperture | Local background': extractionFunc().getCircularApertureBrightness(
-                rFunc,'local',rBackground=30,dilateObjectMaskBackground=6
+                rFunc,'local',**bk_param
             )
         }
         with open(CACHE_PATH_NUMBER_COUNTS,'wb') as file:
             pickle.dump(numberCounts,file)
+
+    background = img.image.copy()
+    minBK = img.backgroundMean-3*img.backgroundStd
+    background[img.globalObjectMask] = minBK
+    background[background < minBK] = minBK
+
+    if PLOT_BK:
+        plt.imshow(background)
+        plt.show()
+
+    for object in img.getIncludedObjects():
+        object.brightDiscrepancy = (
+            np.log(object.getBrightnessWithoutLocalBackground(**bk_param)) - 
+            np.log(object.getCircularApertureBrightness(rFunc,**bk_param))
+        )
+    objectsDiscrepancy = sorted(img.getIncludedObjects(),key=lambda x: x.brightDiscrepancy,reverse=False)
+
+    if ANALYSE_BRIGHT_DISCREPANCY:
+        for object in objectsDiscrepancy:
+            r = rFunc(*object.shape)
+            sliceIndex, placementMatrix, aperture = object._getCroppedCircularAperture(r,r)
+            includeMask = ~object._maskOtherObjectsAndEdge(r,0)
+            pixelsInAperture = img.image[sliceIndex]
+            pixelsInAperture[0,0] = 0
+            fig, axs = plt.subplots(2, 2)
+            axs = axs.flatten()
+            axs[0].imshow(object.croppedPixel)
+            axs[1].imshow(includeMask)
+            axs[2].imshow(pixelsInAperture)
+            axs[3].imshow(background[sliceIndex])
+            axs[0].set_title(f"m: {np.log(object.getBrightnessWithoutLocalBackground(**bk_param)):.3g}")
+            axs[2].set_title(f"m: {np.log(object.getCircularApertureBrightness(rFunc,**bk_param)):.3g}")
+            axs[1].set_title(f"pos: {object.globalPeak[0]+100},{object.globalPeak[1]+100}")
+            axs[3].set_title(f"bk: {object.getLocalBackground(**bk_param)-img.backgroundMean:.3g}")
+            plt.tight_layout()
+            plt.show()
+
+    if PLOT_BK_DISCREP:
+        discrepancy = np.array([object.brightDiscrepancy for object in objectsDiscrepancy])
+        bk_offset = np.array([object.getLocalBackground(**bk_param)-img.backgroundMean for object in objectsDiscrepancy])
+        mask = ~np.isnan(discrepancy) & ~np.isnan(bk_offset)
+        slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(discrepancy[mask],bk_offset[mask])
+        plt.scatter(discrepancy,bk_offset,marker='.')
+        printC(bcolors.WARNING,'Bk_discrep:',slope,intercept,r_value)
+        plt.plot(discrepancy,slope*discrepancy + intercept,color='C1')
+        plt.xlabel('Magnitude discrepancy [naive() - aperture()]')
+        plt.ylabel('Local background offset from global bk')
+        plt.show()
 
     for key, (xMagnitude, nBright) in numberCounts.items():
         nBrighter = np.cumsum(nBright)

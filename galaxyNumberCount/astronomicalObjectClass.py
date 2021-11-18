@@ -83,7 +83,7 @@ class AstronomicalObject():
 
     def getCircularApertureBrightness(self,r=7,background=None,**localBackgroundKwargs):
         # DilateObjectsMask != 0 leads to bad behaviour - Excessive overreporting of brightness
-        dilateObjectsMask=1
+        dilateObjectsMask=0
 
         image = self.parentImageField.image
 
@@ -104,7 +104,7 @@ class AstronomicalObject():
         return brightness - background * np.sum(includeMask)
 
     @functools.cache
-    def getLocalBackground(self,rBackground=20,dilateObjectMaskBackground=3,minimumPixels=50):
+    def getLocalBackground(self,rBackground=20,dilateObjectMaskBackground=3,minimumPixels=20):
         image = self.parentImageField.image
 
         sliceIndex, placementMatrix, aperture = self._getCroppedCircularAperture(rBackground)

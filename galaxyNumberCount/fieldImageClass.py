@@ -14,10 +14,14 @@ from .utilities import printC, bcolors
 
 class FieldImage():
     def __init__(self,filePath = None):
+        self.image = None
         if filePath is not None:
             self.importFits(filePath)
 
-        self.deadPixels = self.image == 0
+        if self.image is not None:
+            self.deadPixels = self.image == 0
+        else:
+            self.deadPixels = None
         self.objects = []
         self.pvalueForThreshold = 0.05
         self.twinSeperationWasRun = False
@@ -120,7 +124,8 @@ class FieldImage():
 
         self.image = self.image[r:-r,r:-r].copy()
         self.blackoutRegion = self.blackoutRegion[r:-r,r:-r].copy()
-        self.deadPixels = self.deadPixels[r:-r,r:-r].copy()
+        if self.deadPixels is not None:
+            self.deadPixels = self.deadPixels[r:-r,r:-r].copy()
 
         self.borderFlagRegion = ndimage.binary_dilation(self.blackoutRegion,iterations=p_border) & ~self.blackoutRegion
         self.image[self.blackoutRegion] = 0
