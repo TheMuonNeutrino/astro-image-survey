@@ -32,7 +32,7 @@ PLOT_BK_DISCREP = False
 SPLIT_TWINS = True
 SAVE_SPLIT_TWINS = True
 
-bk_param = {'rBackground':30,'dilateObjectMaskBackground':6, 'minimumPixels':20}
+local_bk_param = {'rBackground':30,'dilateObjectMaskBackground':6, 'minimumPixels':20}
 
 excludeObjectIds = [0]
 
@@ -127,13 +127,13 @@ if __name__ == '__main__':
         numberCounts = {
             # 'Naive | Subtracted background': extractionFunc().getBrightnessWithoutBackground(),
             'Naive | Local background': extractionFunc().getBrightnessWithoutLocalBackground(
-                **bk_param
+                **local_bk_param
             ),
             # 'Aperture | Subtracted background': extractionFunc().getCircularApertureBrightness(
             #     rFunc
             # ),
             'Aperture | Local background': extractionFunc().getCircularApertureBrightness(
-                rFunc,'local',**bk_param
+                rFunc,'local',**local_bk_param
             )
         }
         with open(CACHE_PATH_NUMBER_COUNTS,'wb') as file:
@@ -150,8 +150,8 @@ if __name__ == '__main__':
 
     for object in img.getIncludedObjects():
         object.brightDiscrepancy = (
-            -np.log(object.getBrightnessWithoutLocalBackground(**bk_param)) - 
-            -np.log(object.getCircularApertureBrightness(rFunc,**bk_param))
+            -np.log(object.getBrightnessWithoutLocalBackground(**local_bk_param)) - 
+            -np.log(object.getCircularApertureBrightness(rFunc,**local_bk_param))
         )
     objectsDiscrepancy = sorted(img.getIncludedObjects(),key=lambda x: x.brightDiscrepancy,reverse=True)
 
@@ -168,16 +168,16 @@ if __name__ == '__main__':
             axs[1].imshow(includeMask)
             axs[2].imshow(pixelsInAperture)
             axs[3].imshow(background[sliceIndex])
-            axs[0].set_title(f"m: {-np.log(object.getBrightnessWithoutLocalBackground(**bk_param)):.3g}")
-            axs[2].set_title(f"m: {-np.log(object.getCircularApertureBrightness(rFunc,**bk_param)):.3g}")
+            axs[0].set_title(f"m: {-np.log(object.getBrightnessWithoutLocalBackground(**local_bk_param)):.3g}")
+            axs[2].set_title(f"m: {-np.log(object.getCircularApertureBrightness(rFunc,**local_bk_param)):.3g}")
             axs[1].set_title(f"pos: {object.globalPeak[0]+100},{object.globalPeak[1]+100}")
-            axs[3].set_title(f"bk: {object.getLocalBackground(**bk_param)-img.backgroundMean:.3g}")
+            axs[3].set_title(f"bk: {object.getLocalBackground(**local_bk_param)-img.backgroundMean:.3g}")
             plt.tight_layout()
             plt.show()
 
     if PLOT_BK_DISCREP:
         discrepancy = np.array([object.brightDiscrepancy for object in objectsDiscrepancy])
-        bk_offset = np.array([object.getLocalBackground(**bk_param)-img.backgroundMean for object in objectsDiscrepancy])
+        bk_offset = np.array([object.getLocalBackground(**local_bk_param)-img.backgroundMean for object in objectsDiscrepancy])
         mask = ~np.isnan(discrepancy) & ~np.isnan(bk_offset)
         slope, intercept, r_value, p_value, std_err = scipy.stats.linregress(discrepancy[mask],bk_offset[mask])
         plt.scatter(discrepancy,bk_offset,marker='.')

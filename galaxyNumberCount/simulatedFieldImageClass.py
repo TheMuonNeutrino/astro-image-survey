@@ -29,17 +29,13 @@ class SimulatedObject():
         self.angle = rng.uniform(0,np.pi)
 
     def place(self):
-        """Modifies Ugrid in order to add the light emitted by the object
-
-        WARNING: Mutates Ugrid in place!
-        """
         Xgrid = self.read_Xgrid
         Ygrid = self.read_Ygrid
         a = np.cos(self.angle)**2 / (2 * self.std_1**2) + np.sin(self.angle)**2 / (2 * self.std_2**2)
         b = -np.sin(2 * self.angle) / (4 * self.std_1**2) + np.sin(2 * self.angle) / (4 * self.std_2**2)
         c = np.sin(self.angle)**2 / (2 * self.std_1**2) + np.cos(self.angle)**2 / (2 * self.std_2**2)
 
-        return self.magnitude * np.exp(
+        return np.power(self.magnitude/2.5,10) * np.exp(
             -(a * (Xgrid - self.x)**2 + 2 * b * (Xgrid - self.x) * (Ygrid - self.y) + c * (Ygrid - self.y)**2)
         )
 
