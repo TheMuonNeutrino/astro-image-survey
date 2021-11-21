@@ -1,7 +1,5 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import functools
-import warnings
 from os import path
 import scipy.stats
 
@@ -56,12 +54,3 @@ def squareMaskAroundPoint(point,r,layerShape):
         sliceIndex = indexFromBbox(bbox)
 
         return maskShape, localPoint, sliceIndex, bbox
-
-def saveObjectPlot(object,i,folderpath):
-    warnings.filterwarnings('ignore')
-    fig = plt.figure()
-    object.plotPixelsAndCentres()
-    plt.savefig(path.join(folderpath,f'{pad(i,4)}_{pad(object.id,4)}.png'))
-    plt.close()
-    warnings.resetwarnings()
-

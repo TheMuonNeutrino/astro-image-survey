@@ -345,3 +345,8 @@ class AstronomicalObject():
                 iterations=3,
                 mask=thresholdMask & ~(regionsMask & ~region)
             )
+
+class AstronomicalObjectPseudo(AstronomicalObject):
+    """Typing object for brightness method binder
+    """
+    pass

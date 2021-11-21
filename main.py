@@ -1,5 +1,6 @@
 
 from os import path
+from typing import Tuple
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
@@ -7,7 +8,7 @@ from galaxyNumberCount.astronomicalObjectClass import AstronomicalObject
 import multiprocessing
 import scipy.stats
 
-from galaxyNumberCount import core
+from galaxyNumberCount import core, plottools
 from galaxyNumberCount.fieldImageClass import FieldImage
 
 from galaxyNumberCount.utilities import bcolors, clearFolder, printC
@@ -27,7 +28,9 @@ USE_CACHED_NUMBER_COUNTS = False
 ANALYSE_BRIGHT_DISCREPANCY = False
 PLOT_BK = False
 PLOT_BK_DISCREP = False
+#PLOT_MAGNITUDE_DISCREP = TRUE
 SPLIT_TWINS = True
+SAVE_SPLIT_TWINS = True
 
 bk_param = {'rBackground':30,'dilateObjectMaskBackground':6, 'minimumPixels':20}
 
@@ -40,15 +43,15 @@ if USE_CACHED:
 ### END CONFIG ###
 
 def saveObjectPlot_twin(object,i):
-    core.saveObjectPlot(object,i,SNIPPET_IMG_FOLDER_TWIN)
+    plottools.saveTwinPlot(object,i,SNIPPET_IMG_FOLDER_TWIN)
 
 def saveObjectPlot_discard(object,i):
-    core.saveObjectPlot(object,i,SNIPPET_IMG_FOLDER_DISCARDED)
+    plottools.saveObjectPlot(object,i,SNIPPET_IMG_FOLDER_DISCARDED)
 
 def saveObjectPlot_largest(object,i):
-    core.saveObjectPlot(object,i,SNIPPET_IMG_FOLDER_LARGEST)
+    plottools.saveObjectPlot(object,i,SNIPPET_IMG_FOLDER_LARGEST)
 
-def excludeFlagged(excludeObjectIds, img, peformExclusionsInBorderRegion = False):
+def excludeFlagged(excludeObjectIds, img: FieldImage, peformExclusionsInBorderRegion = False):
     for object in img.objects:
         if object.id in excludeObjectIds:
             object.isDiscarded = True
@@ -61,14 +64,16 @@ if __name__ == '__main__':
 
     if USE_CACHED:
         with open(CACHE_PATH,'rb') as file:
-            img = pickle.load(file)
+            img: FieldImage = pickle.load(file)
         
         if not img.twinSeperationWasRun and SPLIT_TWINS:
             excludeFlagged(excludeObjectIds, img)
             img.seperateTwins(minSep=1.5)
             excludeFlagged(excludeObjectIds, img,True)
-            with open(CACHE_PATH,'wb') as file:
-                pickle.dump(img,file)
+
+            if SAVE_SPLIT_TWINS:
+                with open(CACHE_PATH,'wb') as file:
+                    pickle.dump(img,file)
         
     else:
         img = FieldImage(MOSIC_PATH)
@@ -93,7 +98,6 @@ if __name__ == '__main__':
         with open(CACHE_PATH,'wb') as file:
             pickle.dump(img,file)
     
-
     if SAVE_SNIPPETS:
         objectsTwins = [object for object in img.objects if object.wasSplit]
         print('Saving twins snippets')
@@ -112,8 +116,6 @@ if __name__ == '__main__':
         clearFolder(SNIPPET_IMG_FOLDER_LARGEST)
         with multiprocessing.Pool(10) as p:
             p.starmap(saveObjectPlot_largest, zip(objectsLargest, range(300)))
-
-    img: FieldImage = img
 
     if USE_CACHED_NUMBER_COUNTS:
         with open(CACHE_PATH_NUMBER_COUNTS,'rb') as file:
@@ -148,10 +150,10 @@ if __name__ == '__main__':
 
     for object in img.getIncludedObjects():
         object.brightDiscrepancy = (
-            np.log(object.getBrightnessWithoutLocalBackground(**bk_param)) - 
-            np.log(object.getCircularApertureBrightness(rFunc,**bk_param))
+            -np.log(object.getBrightnessWithoutLocalBackground(**bk_param)) - 
+            -np.log(object.getCircularApertureBrightness(rFunc,**bk_param))
         )
-    objectsDiscrepancy = sorted(img.getIncludedObjects(),key=lambda x: x.brightDiscrepancy,reverse=False)
+    objectsDiscrepancy = sorted(img.getIncludedObjects(),key=lambda x: x.brightDiscrepancy,reverse=True)
 
     if ANALYSE_BRIGHT_DISCREPANCY:
         for object in objectsDiscrepancy:
@@ -159,15 +161,15 @@ if __name__ == '__main__':
             sliceIndex, placementMatrix, aperture = object._getCroppedCircularAperture(r,r)
             includeMask = ~object._maskOtherObjectsAndEdge(r,0)
             pixelsInAperture = img.image[sliceIndex]
-            pixelsInAperture[0,0] = 0
+            #pixelsInAperture[0,0] = 0
             fig, axs = plt.subplots(2, 2)
-            axs = axs.flatten()
+            axs: Tuple[plt.Axes] = axs.flatten()
             axs[0].imshow(object.croppedPixel)
             axs[1].imshow(includeMask)
             axs[2].imshow(pixelsInAperture)
             axs[3].imshow(background[sliceIndex])
-            axs[0].set_title(f"m: {np.log(object.getBrightnessWithoutLocalBackground(**bk_param)):.3g}")
-            axs[2].set_title(f"m: {np.log(object.getCircularApertureBrightness(rFunc,**bk_param)):.3g}")
+            axs[0].set_title(f"m: {-np.log(object.getBrightnessWithoutLocalBackground(**bk_param)):.3g}")
+            axs[2].set_title(f"m: {-np.log(object.getCircularApertureBrightness(rFunc,**bk_param)):.3g}")
             axs[1].set_title(f"pos: {object.globalPeak[0]+100},{object.globalPeak[1]+100}")
             axs[3].set_title(f"bk: {object.getLocalBackground(**bk_param)-img.backgroundMean:.3g}")
             plt.tight_layout()

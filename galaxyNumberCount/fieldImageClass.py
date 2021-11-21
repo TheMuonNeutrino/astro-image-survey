@@ -1,3 +1,4 @@
+from typing import List
 import numpy as np
 from scipy.optimize.minpack import curve_fit
 from scipy.optimize import newton
@@ -7,7 +8,7 @@ import matplotlib.pyplot as plt
 from astropy.io import fits
 import functools
 
-from galaxyNumberCount.astronomicalObjectClass import AstronomicalObject
+from galaxyNumberCount.astronomicalObjectClass import AstronomicalObject, AstronomicalObjectPseudo
 from galaxyNumberCount.core import double_gaussian, fix_double_gaussian_percentile, gaussian, squareMaskAroundPoint
 
 from .utilities import printC, bcolors
@@ -22,7 +23,7 @@ class FieldImage():
             self.deadPixels = self.image == 0
         else:
             self.deadPixels = None
-        self.objects = []
+        self.objects: List[AstronomicalObject] = []
         self.pvalueForThreshold = 0.05
         self.twinSeperationWasRun = False
 
@@ -220,7 +221,7 @@ class FieldImage():
         nBrighter = np.array(nBrighter)
         return xBrights, nBrighter
 
-    def magnitudeCountPlot(self):
+    def magnitudeCountPlot(self) -> AstronomicalObjectPseudo:
         return _FieldImageBrightnessMethodBinder(self,self._magnitueCountPlot_callback)
 
     def _magnitueCountPlot_callback(self,brightness_list):
@@ -228,7 +229,7 @@ class FieldImage():
         xMagnitude = self.header['MAGZPT'] - 2.5 * np.log10(xBrights)
         return xMagnitude, nBrighter
     
-    def magnitudeCountFit(self):
+    def magnitudeCountFit(self) -> AstronomicalObjectPseudo:
         return _FieldImageBrightnessMethodBinder(self,self._magnitueCountFit_callback)
 
     def _magnitueCountFit_callback(self,brightness_list):
@@ -238,7 +239,7 @@ class FieldImage():
         xMagnitude = self.header['MAGZPT'] - 2.5 * np.log10(xBrights)
         return xMagnitude, nBrighter
 
-    def magnitudeCountBinned(self):
+    def magnitudeCountBinned(self) -> AstronomicalObjectPseudo:
         return _FieldImageBrightnessMethodBinder(self,self._magnitudeCountBinned_callback)
 
     def _magnitudeCountBinned_callback(self,brightness_list):
@@ -262,7 +263,7 @@ class FieldImage():
             
         return globalObjectMask
 
-    def getIncludedObjects(self):
+    def getIncludedObjects(self) -> List[AstronomicalObject]:
         return [object for object in self.objects if not object.isDiscarded]
 
     def seperateTwins(self,minSize=5,minSep=2):
@@ -290,9 +291,9 @@ class _FieldImageBrightnessMethodBinder():
         xBrights, nBrighter = myInstance.getCircularApertureBrightness(r=12,background='local')
     """
     def __init__(self,img,callback):
-        self.fieldImage = img
-        self.boundName = None
-        self.callback = callback
+        self.fieldImage: FieldImage = img
+        self.boundName: str = None
+        self.callback: function = callback
 
     def __getattr__(self, name: str):
         """Captures the method name to use, returning self
