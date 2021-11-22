@@ -11,7 +11,7 @@ import scipy.stats
 from galaxyNumberCount import core, plottools
 from galaxyNumberCount.fieldImageClass import FieldImage
 
-from galaxyNumberCount.utilities import bcolors, clearFolder, printC
+from galaxyNumberCount.utilities import bcolors, clearFolder, ensureFolder, printC
 
 ROOT_PATH = path.dirname(__file__)
 MOSIC_PATH = path.join(ROOT_PATH,'ExtragalacticFieldSurvey_A1.fits')
@@ -21,6 +21,7 @@ CACHE_PATH_NUMBER_COUNTS = path.join(ROOT_PATH,'NumberCountsCache.pickle')
 SNIPPET_IMG_FOLDER_TWIN = path.join(ROOT_PATH,'snippets_twin')
 SNIPPET_IMG_FOLDER_DISCARDED = path.join(ROOT_PATH,'snippets_discarded')
 SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
+SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH = path.join(ROOT_PATH,'snippets_brightness_discrepancy')
 
 SAVE_SNIPPETS = False
 USE_CACHED = True
@@ -74,6 +75,9 @@ if __name__ == '__main__':
             if SAVE_SPLIT_TWINS:
                 with open(CACHE_PATH,'wb') as file:
                     pickle.dump(img,file)
+
+        img.printSignificanceThresholdInfo()
+        img.printBackgroundInfo()
         
     else:
         img = FieldImage(MOSIC_PATH)
@@ -123,7 +127,7 @@ if __name__ == '__main__':
 
     else:
         extractionFunc = img.magnitudeCountBinned
-        rFunc = lambda w, h: int( np.max([6,np.max([w,h])*0.8]) // 1 )
+        rFunc = lambda w, h: int( np.max([3,np.max([w,h])*0.8]) // 1 )
         numberCounts = {
             # 'Naive | Subtracted background': extractionFunc().getBrightnessWithoutBackground(),
             'Naive | Local background': extractionFunc().getBrightnessWithoutLocalBackground(
@@ -153,27 +157,32 @@ if __name__ == '__main__':
             -np.log(object.getBrightnessWithoutLocalBackground(**local_bk_param)) - 
             -np.log(object.getCircularApertureBrightness(rFunc,**local_bk_param))
         )
-    objectsDiscrepancy = sorted(img.getIncludedObjects(),key=lambda x: x.brightDiscrepancy,reverse=True)
+    objectsDiscrepancy = sorted(img.getIncludedObjects(),key=lambda x: x.brightDiscrepancy,reverse=False)
 
     if ANALYSE_BRIGHT_DISCREPANCY:
-        for object in objectsDiscrepancy:
-            r = rFunc(*object.shape)
-            sliceIndex, placementMatrix, aperture = object._getCroppedCircularAperture(r,r)
-            includeMask = ~object._maskOtherObjectsAndEdge(r,0)
-            pixelsInAperture = img.image[sliceIndex]
-            #pixelsInAperture[0,0] = 0
-            fig, axs = plt.subplots(2, 2)
-            axs: Tuple[plt.Axes] = axs.flatten()
-            axs[0].imshow(object.croppedPixel)
-            axs[1].imshow(includeMask)
-            axs[2].imshow(pixelsInAperture)
-            axs[3].imshow(background[sliceIndex])
-            axs[0].set_title(f"m: {-np.log(object.getBrightnessWithoutLocalBackground(**local_bk_param)):.3g}")
-            axs[2].set_title(f"m: {-np.log(object.getCircularApertureBrightness(rFunc,**local_bk_param)):.3g}")
-            axs[1].set_title(f"pos: {object.globalPeak[0]+100},{object.globalPeak[1]+100}")
-            axs[3].set_title(f"bk: {object.getLocalBackground(**local_bk_param)-img.backgroundMean:.3g}")
-            plt.tight_layout()
-            plt.show()
+        ensureFolder(SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH)
+        for i, object in enumerate(objectsDiscrepancy):
+            if i > 1000:
+                break
+            if np.max(object.shape) < 20:
+                r = rFunc(*object.shape)
+                sliceIndex, placementMatrix, aperture = object._getCroppedCircularAperture(r,r)
+                includeMask = ~object._maskOtherObjectsAndEdge(r,0)
+                pixelsInAperture = img.image[sliceIndex]
+                #pixelsInAperture[0,0] = 0
+                fig, axs = plt.subplots(2, 2)
+                axs: Tuple[plt.Axes] = axs.flatten()
+                axs[0].imshow(object.croppedPixel)
+                axs[1].imshow(includeMask)
+                axs[2].imshow(pixelsInAperture)
+                axs[3].imshow(background[sliceIndex])
+                axs[0].set_title(f"m: {-np.log(object.getBrightnessWithoutLocalBackground(**local_bk_param)):.3g}")
+                axs[2].set_title(f"m: {-np.log(object.getCircularApertureBrightness(rFunc,**local_bk_param)):.3g}")
+                axs[1].set_title(f"id: {object.id} \n pos: {object.globalPeak[0]+100},{object.globalPeak[1]+100}")
+                axs[3].set_title(f"bk: {object.getLocalBackground(**local_bk_param)-img.backgroundMean:.3g}")
+                plt.tight_layout()
+                plt.savefig(path.join(SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH,f'{core.pad(i,4)}_{core.pad(object.id,4)}.png'))
+                plt.close()
 
     if PLOT_BK_DISCREP:
         discrepancy = np.array([object.brightDiscrepancy for object in objectsDiscrepancy])
@@ -198,7 +207,7 @@ if __name__ == '__main__':
         slope, intercept, r_value, p_value, std_err = result
         r_squared = r_value**2
 
-        printC(bcolors.OKGREEN,f'{key} | r^2: {r_squared}')
+        printC(bcolors.OKGREEN,f'{key} | r^2: {r_squared} | p: {p_value}')
         printC(bcolors.OKGREEN,f'    m: {slope:.5g} +/- {std_err:.3g}')
         printC(bcolors.OKGREEN,f'    c: {intercept:.5g} +/- {intercept_std_err:.3g}')
         
