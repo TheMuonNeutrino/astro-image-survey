@@ -24,7 +24,7 @@ SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
 SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH = path.join(ROOT_PATH,'snippets_brightness_discrepancy')
 
 SAVE_SNIPPETS = False
-USE_CACHED = True
+USE_CACHED = False
 USE_CACHED_NUMBER_COUNTS = False
 ANALYSE_BRIGHT_DISCREPANCY = False
 PLOT_BK = False
@@ -160,29 +160,27 @@ if __name__ == '__main__':
     objectsDiscrepancy = sorted(img.getIncludedObjects(),key=lambda x: x.brightDiscrepancy,reverse=False)
 
     if ANALYSE_BRIGHT_DISCREPANCY:
-        ensureFolder(SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH)
+        #ensureFolder(SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH)
         for i, object in enumerate(objectsDiscrepancy):
-            if i > 1000:
-                break
-            if np.max(object.shape) < 20:
-                r = rFunc(*object.shape)
-                sliceIndex, placementMatrix, aperture = object._getCroppedCircularAperture(r,r)
-                includeMask = ~object._maskOtherObjectsAndEdge(r,0)
-                pixelsInAperture = img.image[sliceIndex]
-                #pixelsInAperture[0,0] = 0
-                fig, axs = plt.subplots(2, 2)
-                axs: Tuple[plt.Axes] = axs.flatten()
-                axs[0].imshow(object.croppedPixel)
-                axs[1].imshow(includeMask)
-                axs[2].imshow(pixelsInAperture)
-                axs[3].imshow(background[sliceIndex])
-                axs[0].set_title(f"m: {-np.log(object.getBrightnessWithoutLocalBackground(**local_bk_param)):.3g}")
-                axs[2].set_title(f"m: {-np.log(object.getCircularApertureBrightness(rFunc,**local_bk_param)):.3g}")
-                axs[1].set_title(f"id: {object.id} \n pos: {object.globalPeak[0]+100},{object.globalPeak[1]+100}")
-                axs[3].set_title(f"bk: {object.getLocalBackground(**local_bk_param)-img.backgroundMean:.3g}")
-                plt.tight_layout()
-                plt.savefig(path.join(SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH,f'{core.pad(i,4)}_{core.pad(object.id,4)}.png'))
-                plt.close()
+            r = rFunc(*object.shape)
+            sliceIndex, placementMatrix, aperture = object._getCroppedCircularAperture(r,r)
+            includeMask = ~object._maskOtherObjectsAndEdge(r,0)
+            pixelsInAperture = img.image[sliceIndex]
+            #pixelsInAperture[0,0] = 0
+            fig, axs = plt.subplots(2, 2)
+            axs: Tuple[plt.Axes] = axs.flatten()
+            axs[0].imshow(object.croppedPixel)
+            axs[1].imshow(includeMask)
+            axs[2].imshow(pixelsInAperture)
+            axs[3].imshow(background[sliceIndex])
+            axs[0].set_title(f"m: {-np.log(object.getBrightnessWithoutLocalBackground(**local_bk_param)):.3g}")
+            axs[2].set_title(f"m: {-np.log(object.getCircularApertureBrightness(rFunc,**local_bk_param)):.3g}")
+            axs[1].set_title(f"id: {object.id} \n pos: {object.globalPeak[0]+100},{object.globalPeak[1]+100}")
+            axs[3].set_title(f"bk: {object.getLocalBackground(**local_bk_param)-img.backgroundMean:.3g}")
+            plt.tight_layout()
+            plt.show()
+            #plt.savefig(path.join(SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH,f'{core.pad(i,4)}_{core.pad(object.id,4)}.png'))
+            #plt.close()
 
     if PLOT_BK_DISCREP:
         discrepancy = np.array([object.brightDiscrepancy for object in objectsDiscrepancy])
