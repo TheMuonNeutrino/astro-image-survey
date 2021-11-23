@@ -69,6 +69,7 @@ class FieldImage():
         )
 
         self.backgroundFitCoeffs = coeffs
+        self.backgroundFitCov = cov
         self.backgroundMean = (coeffs[0]*coeffs[2] + coeffs[3]*coeffs[5])/(coeffs[2]+coeffs[5])
         self.backgroundStd = self.backgoundStd2 = np.std(pixels[(pixels < maxFit) & (pixels > minFit)])
         self.galaxy_significance_threshold = newton(

@@ -24,7 +24,7 @@ SNIPPET_IMG_FOLDER_LARGEST = path.join(ROOT_PATH, 'snippets_largest')
 SNIPPET_IMG_FOLDER_BRIGHT_DISCREP_PATH = path.join(ROOT_PATH,'snippets_brightness_discrepancy')
 
 SAVE_SNIPPETS = False
-USE_CACHED = False
+USE_CACHED = True
 USE_CACHED_NUMBER_COUNTS = False
 ANALYSE_BRIGHT_DISCREPANCY = False
 PLOT_BK = False
@@ -78,6 +78,12 @@ if __name__ == '__main__':
 
         img.printSignificanceThresholdInfo()
         img.printBackgroundInfo()
+
+        # for key in img.header.keys():
+        #     if str(key).strip() != '':
+        #         print(key, "|", " ".join(str(img.header[key]).split()))
+        print(repr(img.header))
+
         
     else:
         img = FieldImage(MOSIC_PATH)

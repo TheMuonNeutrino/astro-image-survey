@@ -191,11 +191,31 @@ myNorm2 = matplotlib.colors.TwoSlopeNorm(
     np.min(pixelsInAperture[pixelsInAperture > 0])-1,
     np.max(objectD.croppedPixel)
 )
-plt.imshow(objectD.croppedPixel,norm = myNorm2,cmap=CMAP)
+im = plt.imshow(objectD.croppedPixel,norm = myNorm2,cmap=CMAP)
+plt.axis('off')
 
 ax2 = plt.subplot2grid((1,2),(0,1),1,1)
 #myNorm3 = matplotlib.colors.LogNorm()
-plt.imshow(pixelsInAperture,norm=myNorm2,cmap=CMAP)
+im2 = plt.imshow(pixelsInAperture,norm=myNorm2,cmap=CMAP)
+cbar = fig.colorbar(im2,spacing='proportional')
+cbar.ax.set_ylabel('Pixel intensity',labelpad=10)
+plt.axis('off')
 
 plt.tight_layout()
+cbar.ax.yaxis.set_major_formatter(matplotlib.ticker.ScalarFormatter())
+cbar.ax.yaxis.set_minor_formatter(matplotlib.ticker.ScalarFormatter())
+cbar.set_ticks([3400,3430,3460,3500,3750,4000,4250])
+
+X = np.arange(0,pixelsInAperture.shape[0])
+Y = np.arange(0,pixelsInAperture.shape[1])
+Xgrid, Ygrid = np.meshgrid(X,Y)
+
+plt.plot(*genOutlineSegments(
+    (pixelsInAperture > 3460) & (Xgrid < 19).T
+),color=(0.8,0,0,.7), linewidth=3,label='Border pixels of object')
+plt.plot(*genOutlineSegments(
+    (pixelsInAperture > 3460) & (Xgrid >= 19).T
+),color='#ff9900ee', linewidth=3, label='Pixels in other object')
+plt.legend(loc='lower left',bbox_to_anchor=(-0.2, -0.35))
+
 plt.show()
