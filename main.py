@@ -33,7 +33,20 @@ PLOT_BK_DISCREP = False
 SPLIT_TWINS = True
 SAVE_SPLIT_TWINS = True
 
-local_bk_param = {'rBackground':30,'dilateObjectMaskBackground':6, 'minimumPixels':20}
+SMALL_SIZE = 8+4
+MEDIUM_SIZE = 10+4
+BIGGER_SIZE = 12+4
+
+plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
+plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
+plt.rc('axes', titlesize=MEDIUM_SIZE)
+
+local_bk_param = {'rBackground':30,'dilateObjectMaskBackground':6, 'minimumPixels':15}
 
 excludeObjectIds = [0]
 
@@ -79,10 +92,7 @@ if __name__ == '__main__':
         img.printSignificanceThresholdInfo()
         img.printBackgroundInfo()
 
-        # for key in img.header.keys():
-        #     if str(key).strip() != '':
-        #         print(key, "|", " ".join(str(img.header[key]).split()))
-        print(repr(img.header))
+        #print(repr(img.header))
 
         
     else:
@@ -135,11 +145,11 @@ if __name__ == '__main__':
         extractionFunc = img.magnitudeCountBinned
         rFunc = lambda w, h: int( np.max([3,np.max([w,h])*0.8]) // 1 )
         numberCounts = {
-            # 'Naive | Subtracted background': extractionFunc().getBrightnessWithoutBackground(),
+            # 'Naive | Global background': extractionFunc().getBrightnessWithoutBackground(),
             'Naive | Local background': extractionFunc().getBrightnessWithoutLocalBackground(
                 **local_bk_param
             ),
-            # 'Aperture | Subtracted background': extractionFunc().getCircularApertureBrightness(
+            # 'Aperture | Global background': extractionFunc().getCircularApertureBrightness(
             #     rFunc
             # ),
             'Aperture | Local background': extractionFunc().getCircularApertureBrightness(
@@ -202,8 +212,8 @@ if __name__ == '__main__':
 
     for key, (xMagnitude, nBright) in numberCounts.items():
         nBrighter = np.cumsum(nBright)
-        nBrighter_err = np.sqrt(nBright)
-        indicies = (xMagnitude >= 12) & (xMagnitude < 16)
+        nBrighter_err = np.sqrt(nBrighter)
+        indicies = (xMagnitude >= 11) & (xMagnitude < 16)
         xMagnitudeFit = xMagnitude[indicies]
         nBrighterFit = nBrighter[indicies]
         result = scipy.stats.linregress(xMagnitudeFit, np.log(nBrighterFit))
@@ -211,15 +221,18 @@ if __name__ == '__main__':
         slope, intercept, r_value, p_value, std_err = result
         r_squared = r_value**2
 
+        tinv = lambda p,df: np.abs(scipy.stats.t.ppf(p/2, df))
+        ts = tinv(0.05, len(xMagnitudeFit) - 2)
+
         printC(bcolors.OKGREEN,f'{key} | r^2: {r_squared} | p: {p_value}')
-        printC(bcolors.OKGREEN,f'    m: {slope:.5g} +/- {std_err:.3g}')
-        printC(bcolors.OKGREEN,f'    c: {intercept:.5g} +/- {intercept_std_err:.3g}')
+        printC(bcolors.OKGREEN,f'    m: {slope:.5g} +/- {std_err*ts:.3g}')
+        printC(bcolors.OKGREEN,f'    c: {intercept:.5g} +/- {intercept_std_err*ts:.3g}')
         
         plt.errorbar(xMagnitude,nBrighter,yerr=nBrighter_err,marker='.',ls='',label=key,capsize=3)
         plt.plot(xMagnitudeFit,np.exp(slope*xMagnitudeFit + intercept),marker='',label=key + " | Fit")
 
-    plt.xlabel('Magnitude')
-    plt.ylabel('Number of Objects Brighter')
+    plt.xlabel('AB Magnitude (m)')
+    plt.ylabel('Number of objects brighter than m')
     plt.yscale('log')
     plt.legend()
     plt.tight_layout()

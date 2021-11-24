@@ -170,10 +170,11 @@ sliceIndex, placementMatrix, aperture = objectD._getCroppedCircularAperture(r,r)
 includeMask = ~objectD._maskOtherObjectsAndEdge(r,0)
 pixelsInAperture = img.image[sliceIndex]
 pixelsInAperture[~includeMask] = 0
+allPixelsInAperture = pixelsInAperture.copy()
 pixelsInAperture[img.globalObjectMask[sliceIndex] & (pixelsInAperture != 0)] = 0
 
 fig = plt.figure()
-ax1 = plt.subplot2grid((1,2),(0,0),1,1)
+ax1 = plt.subplot2grid((2,3),(0,0),1,1)
 #myNorm2 = matplotlib.colors.LogNorm()
 
 midpointShift = 0.1
@@ -194,9 +195,9 @@ myNorm2 = matplotlib.colors.TwoSlopeNorm(
 im = plt.imshow(objectD.croppedPixel,norm = myNorm2,cmap=CMAP)
 plt.axis('off')
 
-ax2 = plt.subplot2grid((1,2),(0,1),1,1)
+ax2 = plt.subplot2grid((2,3),(0,1),2,2)
 #myNorm3 = matplotlib.colors.LogNorm()
-im2 = plt.imshow(pixelsInAperture,norm=myNorm2,cmap=CMAP)
+im2 = plt.imshow(allPixelsInAperture,norm=myNorm2,cmap=CMAP)
 cbar = fig.colorbar(im2,spacing='proportional')
 cbar.ax.set_ylabel('Pixel intensity',labelpad=10)
 plt.axis('off')
@@ -212,10 +213,10 @@ Xgrid, Ygrid = np.meshgrid(X,Y)
 
 plt.plot(*genOutlineSegments(
     (pixelsInAperture > 3460) & (Xgrid < 19).T
-),color=(0.8,0,0,.7), linewidth=3,label='Border pixels of object')
+),color=(0.8,0,0,.7), linewidth=2,label='Border pixels of object')
 plt.plot(*genOutlineSegments(
     (pixelsInAperture > 3460) & (Xgrid >= 19).T
-),color='#ff9900ee', linewidth=3, label='Pixels in other object')
-plt.legend(loc='lower left',bbox_to_anchor=(-0.2, -0.35))
+),color='#ff9900ee', linewidth=2, label='Pixels in other object')
+plt.legend(loc='lower left',bbox_to_anchor=(-0.8, 0.0))
 
 plt.show()
