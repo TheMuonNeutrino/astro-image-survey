@@ -17,6 +17,8 @@ rng = np.random.default_rng(3002)
 ROOT_PATH = path.dirname(__file__)
 CACHE_PATH = path.join(ROOT_PATH,'FieldImageCache.pickle')
 
+
+### FROM https://stackoverflow.com/a/39566040
 SMALL_SIZE = 8+4
 MEDIUM_SIZE = 10+4
 BIGGER_SIZE = 12+4
@@ -29,15 +31,17 @@ plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 plt.rc('axes', titlesize=MEDIUM_SIZE)
+### END FROM
 
 
 with open(CACHE_PATH,'rb') as file:
     img: FieldImage = pickle.load(file)
 
 def genOutlineSegments(mapimg):
+    # Curtosy of:
     # https://stackoverflow.com/questions/24539296/outline-a-region-in-a-graph
-        # a vertical line segment is needed, when the pixels next to each other horizontally
-    #   belong to diffferent groups (one is part of the mask, the other isn't)
+    # a vertical line segment is needed, when the pixels next to each other horizontally
+    # belong to diffferent groups (one is part of the mask, the other isn't)
     # after this ver_seg has two arrays, one for row coordinates, the other for column coordinates 
     ver_seg = np.where(mapimg[:,1:] != mapimg[:,:-1])
 

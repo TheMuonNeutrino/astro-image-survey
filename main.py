@@ -33,6 +33,7 @@ PLOT_BK_DISCREP = False
 SPLIT_TWINS = True
 SAVE_SPLIT_TWINS = True
 
+### FROM https://stackoverflow.com/a/39566040
 SMALL_SIZE = 8+4
 MEDIUM_SIZE = 10+4
 BIGGER_SIZE = 12+4
@@ -45,6 +46,7 @@ plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
 plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
 plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 plt.rc('axes', titlesize=MEDIUM_SIZE)
+### END FROM
 
 local_bk_param = {'rBackground':30,'dilateObjectMaskBackground':6, 'minimumPixels':15}
 
