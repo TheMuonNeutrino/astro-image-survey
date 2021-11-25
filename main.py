@@ -147,13 +147,13 @@ if __name__ == '__main__':
         extractionFunc = img.magnitudeCountBinned
         rFunc = lambda w, h: int( np.max([3,np.max([w,h])*0.8]) // 1 )
         numberCounts = {
-            # 'Naive | Global background': extractionFunc().getBrightnessWithoutBackground(),
+            'Naive | Global background': extractionFunc().getBrightnessWithoutBackground(),
             'Naive | Local background': extractionFunc().getBrightnessWithoutLocalBackground(
                 **local_bk_param
             ),
-            # 'Aperture | Global background': extractionFunc().getCircularApertureBrightness(
-            #     rFunc
-            # ),
+            'Aperture | Global background': extractionFunc().getCircularApertureBrightness(
+                rFunc
+            ),
             'Aperture | Local background': extractionFunc().getCircularApertureBrightness(
                 rFunc,'local',**local_bk_param
             )
